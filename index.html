@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kalorijų dienoraštis</title>
+<meta name="description" content="Kalorijų ir baltymų dienoraštis lietuviškai">
+<meta name="theme-color" content="#A3345E">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kalorijos">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+</head>
+<body>
+<div class="center" id="bootView">Kraunama…</div>
+<div class="auth" id="authView" hidden>
+  <h1>Kalorijų dienoraštis</h1>
+  <p id="authIntro">Prisijunk, kad matytum savo įrašus bet kuriame įrenginyje.</p>
+  <form class="authcard" id="authForm" autocomplete="on">
+    <label for="authEmail">El. paštas<input type="email" id="authEmail" autocomplete="email" required></label>
+    <label for="authPass" id="authPassLbl">Slaptažodis<input type="password" id="authPass" autocomplete="current-password" minlength="8" required></label>
+    <button class="primary" type="submit" id="authBtn">Prisijungti</button>
+    <div class="authmsg" id="authMsg" role="status"></div>
+    <button type="button" class="linkbtn" id="authSwitch">Neturi paskyros? Registruokis</button>
+    <button type="button" class="linkbtn" id="authForgot">Pamiršai slaptažodį?</button>
+  </form>
+</div>
+
+<div class="wrap" id="appView" hidden>
+  <header>
+    <div class="titlerow"><h1>Kalorijų dienoraštis</h1><button type="button" class="acct" id="logoutBtn">Atsijungti</button></div>
+    <div class="mockbar" id="mockBar" hidden>Bandomasis režimas: duomenys tik atmintyje, AI atsakymai netikri.</div>
+    <div class="datenav">
+      <button class="iconbtn" id="prev" aria-label="Ankstesnė diena">‹</button>
+      <div class="lbl" id="dateLbl"></div>
+      <button class="today" id="todayBtn" hidden>Šiandien</button>
+      <button class="iconbtn" id="next" aria-label="Kita diena">›</button>
+    </div>
+  </header>
+
+  <section class="summary" aria-label="Dienos suvestinė">
+    <div class="big"><span class="val num" id="kcalVal">0</span><span class="of num" id="kcalOf">/ 2000 kcal</span><span class="chip ok num" id="leftChip">Liko 2000</span></div>
+    <div class="meter">
+      <div class="row"><span>Kalorijos</span><b class="num" id="kcalPct">0 %</b></div>
+      <div class="bar"><i id="kcalBar" style="width:0;background:var(--accent)"></i></div>
+    </div>
+    <div class="meter">
+      <div class="row"><span>Baltymai</span><b class="num" id="protTxt">0 / 160 g</b></div>
+      <div class="bar"><i id="protBar" style="width:0;background:var(--protein)"></i></div>
+    </div>
+    <div class="macros num" id="macros"></div>
+    <div class="balance num" aria-label="Energijos balansas">
+      <div><span>Suvalgyta</span><b id="balIn">0</b></div>
+      <div><span>Sudeginta</span><b id="balOut">0</b></div>
+      <div><span id="balLbl">Deficitas</span><b id="balNet">0</b></div>
+    </div>
+    <div class="hint num" id="balHint"></div>
+  </section>
+
+  <section class="add" id="addSec" aria-label="Pridėti įrašą">
+    <div class="seg" role="group" aria-label="Įrašo tipas">
+      <button type="button" id="kindFood" aria-pressed="true">Maistas</button>
+      <button type="button" id="kindSport" aria-pressed="false">Sportas</button>
+      <button type="button" id="kindCalc" aria-pressed="false">Skaičiuoklė</button>
+    </div>
+    <div class="slots" id="slots" role="group" aria-label="Valgymas"></div>
+    <form class="inrow" id="addForm" autocomplete="off">
+      <input type="text" id="foodInput" placeholder="Ką suvalgei? pvz. bananas, 300 g vištienos" aria-label="Ką suvalgei">
+      <input type="number" id="foodGrams" placeholder="Svoris, g" min="1" max="5000" step="1" inputmode="numeric" aria-label="Svoris, g (nebūtina)">
+      <button class="primary" id="addBtn" type="submit">Pridėti</button>
+    </form>
+    <form class="sportform" id="sportForm" autocomplete="off" hidden>
+      <label for="sportMin">Sportas, min<input type="number" id="sportMin" min="1" max="600" step="1" placeholder="pvz. 40" inputmode="numeric"></label>
+      <label for="stepsIn">Nueiti žingsniai<input type="number" id="stepsIn" min="0" max="100000" step="1" placeholder="pvz. 8000" inputmode="numeric"></label>
+      <button class="primary" type="submit">Išsaugoti</button>
+    </form>
+    <div class="hint" id="sportHint" hidden>Sportas skaičiuojamas kaip vidutinio intensyvumo treniruotė namuose. Žingsniai yra visos dienos suma iš telefono: nauja reikšmė pakeičia senąją. Įskaičiuojami visi žingsniai.</div>
+    <div class="calc" id="calcSec" hidden>
+      <form class="calcform" id="calcForm" autocomplete="off">
+        <input type="text" id="calcName" placeholder="Produktas arba visas valgis" aria-label="Produktas arba valgis">
+        <input type="number" id="calcGrams" placeholder="g" min="1" max="5000" aria-label="Kiekis, g" inputmode="numeric">
+        <button class="primary" id="calcBtn" type="submit">Tikrinti</button>
+      </form>
+      <div class="tools">
+        <label class="photo" id="calcPhotoLbl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Fotografuoti etiketę<input type="file" id="calcPhoto" accept="image/*"></label>
+        <span class="filechip" id="calcFileChip" hidden><span id="calcFileName"></span><button type="button" id="calcFileClear" aria-label="Pašalinti nuotrauką">×</button></span>
+      </div>
+      <div class="hint" id="calcHint">Vienas produktas, pvz. „graikiškas jogurtas 2 %“, arba visas valgis per kablelius, pvz. „5 kiaušiniai, 3 riekės duonos, 2 šaukštai light majonezo“. Nieko neįrašo į dienoraštį, kol pats nepaspaudi „Pridėti“.</div>
+      <div id="calcOut"></div>
+      <div id="cmpOut"></div>
+      <div class="altbox">
+        <h2>Rasti lengvesnį produktą</h2>
+        <form class="calcform alt" id="altForm" autocomplete="off">
+          <input type="text" id="altQ" placeholder="pvz. majonezas, sausainiai, varškės sūreliai" aria-label="Kokiam produktui ieškai alternatyvos">
+          <button class="primary" id="altBtn" type="submit">Siūlyti</button>
+        </form>
+        <div id="altOut"></div>
+      </div>
+    </div>
+    <div class="tools">
+      <label class="photo" id="photoLbl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Fotografuoti maistą<input type="file" id="photoInput" accept="image/*"></label>
+      <span class="filechip" id="fileChip" hidden><span id="fileName"></span><button type="button" id="fileClear" aria-label="Pašalinti nuotrauką">×</button></span>
+    </div>
+    <div class="myprods" id="myProds">
+      <div class="mphead"><span>Mano produktai</span><button type="button" id="mpManage">Tvarkyti</button></div>
+      <div class="chips" id="mpChips"></div>
+      <div id="mpQty"></div>
+      <div class="mpsub" id="mlHead">Dažni valgiai</div>
+      <div class="chips" id="mlChips"></div>
+      <div id="mpManageBox" hidden>
+        <ul class="mplist" id="mlList"></ul>
+        <ul class="mplist" id="mpList"></ul>
+        <form class="mpform" id="mpForm" autocomplete="off">
+          <input type="text" id="mpName" placeholder="Pavadinimas, pvz. Rokiškio varškė 0,5 %" aria-label="Pavadinimas" required>
+          <input type="text" id="mpUnit" placeholder="Vienetas, pvz. riekė, 100 g" aria-label="Vienetas" required>
+          <input type="number" id="mpGrams" placeholder="Svoris, g (nebūtina)" aria-label="Vieneto svoris, g" min="0" step="0.1">
+          <input type="number" id="mpKcal" placeholder="kcal vienetui" aria-label="kcal vienetui" min="0" step="0.1" required>
+          <input type="number" id="mpProt" placeholder="baltymai g vienetui" aria-label="Baltymai vienetui, g" min="0" step="0.1">
+          <button type="submit">Pridėti produktą</button>
+        </form>
+        <div class="hint">Skaičius imk nuo etiketės. Pvz., jei 100 g turi 235 kcal, o riekė sveria 33 g, tai riekė turi 78 kcal.</div>
+      </div>
+    </div>
+    <div class="status" id="status" role="status"></div>
+    <details class="manual" id="manual">
+      <summary>Įvesti rankiniu būdu</summary>
+      <form class="mform" id="manForm" autocomplete="off">
+        <input type="text" id="manName" placeholder="Produktas" aria-label="Produktas" required>
+        <input type="number" id="manKcal" placeholder="kcal" aria-label="Kalorijos" min="0" step="1" required>
+        <input type="number" id="manProt" placeholder="baltymai g" aria-label="Baltymai, g" min="0" step="0.1">
+        <button type="submit">Pridėti</button>
+      </form>
+    </details>
+  </section>
+
+  <section class="log" aria-label="Dienos įrašai">
+    <div class="loghead"><h2>Suvalgyta</h2><span class="num" id="countTxt"></span></div>
+    <div id="logBody"></div>
+  </section>
+
+  <section class="stats" aria-label="Statistika">
+    <div class="cmphead"><h2>Statistika</h2>
+      <div class="seg small" role="group" aria-label="Laikotarpis"><button type="button" data-n="7" aria-pressed="true">7 d.</button><button type="button" data-n="30" aria-pressed="false">30 d.</button></div>
+    </div>
+    <div class="tiles num" id="statTiles"></div>
+    <svg id="balSvg" viewBox="0 0 336 150" role="img" aria-label="Dienos energijos balansas"></svg>
+    <div class="hint" id="statSub"></div>
+    <div id="topFoods"></div>
+    <div class="insight">
+      <h2>Claude pastebėjimai</h2>
+      <div class="insighttxt" id="insightTxt"></div>
+      <div class="meta" id="insightMeta"></div>
+      <div><button type="button" class="btn2 main" id="insightBtn">Gauti pastebėjimus</button></div>
+      <div class="hint">Claude peržiūri pasirinkto laikotarpio įrašus ir pasiūlo, ką keisti.</div>
+    </div>
+  </section>
+
+  <details class="goals" id="goals">
+    <summary>Tikslai</summary>
+    <div class="grow">
+      <label for="goalKcal">Kalorijos per dieną<input type="number" id="goalKcal" min="800" max="6000" step="50"></label>
+      <label for="goalProt">Baltymai, g<input type="number" id="goalProt" min="20" max="400" step="5"></label>
+      <label for="goalWeight">Svoris, kg<input type="number" id="goalWeight" min="30" max="300" step="0.1"></label>
+      <label for="goalAge">Amžius<input type="number" id="goalAge" min="14" max="100" step="1"></label>
+      <label for="goalHeight">Ūgis, cm<input type="number" id="goalHeight" min="120" max="230" step="1"></label>
+      <label for="goalSex">Lytis<select id="goalSex" class="goalsel"><option value="m">Vyras</option><option value="f">Moteris</option></select></label>
+      <label class="check" for="addBurned"><input type="checkbox" id="addBurned">Pridėti sudegintas kalorijas prie dienos limito</label>
+      <label class="check" for="accurate"><input type="checkbox" id="accurate">Tikslesnis skaičiavimas (galingesnis Claude modelis: atsakymas per ~5–30 s, brangesnė užklausa)</label>
+    </div>
+  </details>
+
+  <p class="foot" id="foot">Kalorijos įvertinamos apytiksliai. Tiksliausia nurodyti gramus, pvz., „150 g virtų ryžių“.</p>
+</div>
+
+
+<div class="toast" id="toast" hidden></div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
