@@ -46,6 +46,11 @@ npm run test:e2e   # naršyklės testai (bandomasis režimas, tikri duomenys nel
 npm run build      # tipų patikra + gamybinė versija į dist/
 ```
 
+## Naudojimas be registracijos
+
+Paspaudus „Pradėti be registracijos“ sukuriama anoniminė Supabase paskyra (reikia įjungti Supabase → Authentication → Sign In / Providers → „Allow anonymous sign-ins“).
+Duomenys saugomi duomenų bazėje kaip ir visiems, bet prisijungimas laikomas tik tame įrenginyje. Mygtukas „Išsaugoti paskyrą“ prie jos prisieja el. paštą – vartotojo id ir visi įrašai lieka; patvirtinus el. paštą paprašoma nusistatyti slaptažodį.
+
 ## Formulės
 
 - Bazinė apykaita (Mifflin-St Jeor): `10 × svoris + 6,25 × ūgis − 5 × amžius + 5` (moteriai `−161`).
@@ -61,7 +66,9 @@ Skaičiuojamos tik papildomos kalorijos virš ramybės, kad nebūtų dvigubo įs
 | Pavadinimas | Privaloma | Numatyta |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | taip | – |
-| `AI_DAILY_LIMIT` | ne | `150` užklausų per parą vienam vartotojui |
+| `AI_DAILY_LIMIT` | ne | `150` užklausų per parą registruotam vartotojui |
+| `AI_ANON_DAILY_LIMIT` | ne | `40` užklausų per parą naudojančiam be registracijos |
+| `AI_GLOBAL_DAILY_LIMIT` | ne | `1500` užklausų per parą visiems kartu (apsauga nuo išlaidų) |
 | `AI_MODEL_QUICK` | ne | `claude-haiku-4-5-20251001` |
 | `AI_MODEL_DEFAULT` | ne | `claude-sonnet-5-5` (nuotraukos, „Tikslesnis skaičiavimas“, pastebėjimai, alternatyvos) |
 

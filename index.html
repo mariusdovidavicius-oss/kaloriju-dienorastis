@@ -20,6 +20,12 @@
 <div class="auth" id="authView" hidden>
   <h1>Kalorijų dienoraštis</h1>
   <p id="authIntro">Prisijunk, kad matytum savo įrašus bet kuriame įrenginyje.</p>
+  <div class="authcard" id="anonCard">
+    <button class="primary" type="button" id="anonBtn">Pradėti be registracijos</button>
+    <div class="hint">Įrašai bus saugomi šiame įrenginyje. Paskyrą su el. paštu galėsi susikurti vėliau – niekas nedings.</div>
+    <div class="authmsg" id="anonMsg" role="status"></div>
+  </div>
+  <p id="orLogin">Arba prisijunk:</p>
   <form class="authcard" id="authForm" autocomplete="on">
     <label for="authEmail">El. paštas<input type="email" id="authEmail" autocomplete="email" required></label>
     <label for="authPass" id="authPassLbl">Slaptažodis<input type="password" id="authPass" autocomplete="current-password" minlength="8" required></label>
@@ -27,12 +33,14 @@
     <div class="authmsg" id="authMsg" role="status"></div>
     <button type="button" class="linkbtn" id="authSwitch">Neturi paskyros? Registruokis</button>
     <button type="button" class="linkbtn" id="authForgot">Pamiršai slaptažodį?</button>
+    <button type="button" class="linkbtn" id="authBack" hidden>← Grįžti į programą</button>
   </form>
 </div>
 
 <div class="wrap" id="appView" hidden>
   <header>
     <div class="titlerow"><h1>Kalorijų dienoraštis</h1><button type="button" class="acct" id="logoutBtn">Atsijungti</button></div>
+    <div class="anonbar" id="anonBar" hidden><span>Naudojiesi be paskyros – įrašai saugomi tik šiame įrenginyje.</span><button type="button" id="saveAcctBtn">Išsaugoti paskyrą</button></div>
     <div class="mockbar" id="mockBar" hidden>Bandomasis režimas: duomenys tik atmintyje, AI atsakymai netikri.</div>
     <div class="datenav">
       <button class="iconbtn" id="prev" aria-label="Ankstesnė diena">‹</button>

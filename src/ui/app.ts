@@ -28,7 +28,10 @@ export interface AppContext {
   store: Store;
   ai: AiClient;
   mock: boolean;
+  /** Naudojasi be registracijos (anoniminė paskyra). */
+  anonymous: boolean;
   onLogout: () => void;
+  onSaveAccount: () => void;
 }
 
 export async function startApp(ctx: AppContext) {
@@ -151,6 +154,7 @@ export async function startApp(ctx: AppContext) {
   function aiErr(e: unknown): string {
     const c = (e as { code?: string })?.code;
     if (c === 'not_configured') return 'Claude dar neprijungtas (serveryje trūksta API rakto). Kol kas įvesk rankiniu būdu.';
+    if (c === 'global_limit') return 'Šiandien AI užklausų limitas visiems vartotojams pasiektas. Rytoj vėl veiks; kol kas įvesk rankiniu būdu.';
     if (c === 'daily_limit') return 'Šiandienos AI užklausų limitas išnaudotas. Rytoj vėl veiks; kol kas įvesk rankiniu būdu.';
     if (c === 'busy') return 'Claude šiuo metu perkrautas. Pabandyk po minutės.';
     if (c === 'image_rejected') return 'Šios nuotraukos nepavyko apdoroti. Pabandyk kitą.';
@@ -841,8 +845,11 @@ export async function startApp(ctx: AppContext) {
 
   /* ---------- paskyra ---------- */
   $('#mockBar').hidden = !ctx.mock;
-  $('#logoutBtn').hidden = ctx.mock;
+  // Anoniminiam vartotojui atsijungus duomenys būtų prarasti, todėl vietoj to siūlome išsaugoti paskyrą.
+  $('#logoutBtn').hidden = ctx.mock || ctx.anonymous;
   $('#logoutBtn').onclick = () => ctx.onLogout();
+  $('#anonBar').hidden = !ctx.anonymous;
+  $('#saveAcctBtn').onclick = () => ctx.onSaveAccount();
   $('#foot').textContent = 'Kalorijos įvertinamos apytiksliai. Tiksliausia nurodyti gramus, pvz., „150 g virtų ryžių“.';
 
   /* ---------- paleidimas ---------- */

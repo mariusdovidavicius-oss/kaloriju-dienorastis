@@ -264,3 +264,6 @@ img{max-width:100%}
 .authmsg.err{color:var(--over)}
 .authmsg.ok{color:var(--ok)}
 .center{min-height:60vh;display:grid;place-items:center;color:var(--muted)}
+.anonbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:.82rem;color:var(--muted)}
+.anonbar button{border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:999px;padding:5px 12px;font-weight:600;font-size:.82rem}
+.authcard .hint{text-align:center}

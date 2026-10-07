@@ -10,7 +10,9 @@ import { alternativesPrompt, estimatePrompt, insightPrompt, lookupPrompt, type P
 
 const MODEL_QUICK = Deno.env.get('AI_MODEL_QUICK') ?? 'claude-haiku-4-5-20251001';
 const MODEL_DEFAULT = Deno.env.get('AI_MODEL_DEFAULT') ?? 'claude-sonnet-5-5';
-const DAILY_LIMIT = Number(Deno.env.get('AI_DAILY_LIMIT') ?? '150');
+const DAILY_LIMIT = Number(Deno.env.get('AI_DAILY_LIMIT') ?? '150');            // registruotam vartotojui per parą
+const ANON_DAILY_LIMIT = Number(Deno.env.get('AI_ANON_DAILY_LIMIT') ?? '40');     // be registracijos per parą
+const GLOBAL_DAILY_LIMIT = Number(Deno.env.get('AI_GLOBAL_DAILY_LIMIT') ?? '1500'); // visiems kartu per parą (apsauga nuo išlaidų)
 const MAX_IMAGE_B64 = 5_000_000; // ~3,7 MB
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
@@ -119,10 +121,15 @@ Deno.serve(async (req) => {
   const task = String(body.task || '');
   if (!['estimate', 'lookup', 'alternatives', 'insight'].includes(task)) return fail('bad_request');
 
-  // dienos limitas vienam vartotojui
+  // paros limitai: vienam vartotojui ir visiems kartu
   const since = new Date(Date.now() - 24 * 3600e3).toISOString();
-  const { count } = await admin.from('ai_usage').select('id', { count: 'exact', head: true }).eq('user_id', user.id).gte('created_at', since);
-  if ((count ?? 0) >= DAILY_LIMIT) return fail('daily_limit', 429);
+  const [mine, all] = await Promise.all([
+    admin.from('ai_usage').select('id', { count: 'exact', head: true }).eq('user_id', user.id).gte('created_at', since),
+    admin.from('ai_usage').select('id', { count: 'exact', head: true }).gte('created_at', since),
+  ]);
+  const limit = user.is_anonymous ? ANON_DAILY_LIMIT : DAILY_LIMIT;
+  if ((mine.count ?? 0) >= limit) return fail('daily_limit', 429);
+  if ((all.count ?? 0) >= GLOBAL_DAILY_LIMIT) return fail('global_limit', 503);
 
   // paveikslėlis
   let image: { mediaType: string; data: string } | null = null;
