@@ -3,7 +3,7 @@ import type { Activity, Day, FoodItem, LookupResult, MealItem, MealKey, Product,
 
 export const DEFAULT_SETTINGS: Settings = {
   kcal: 2000, protein: 140, weight: 80, age: 35, height: 175, sex: 'm', addBurned: false, accurate: false,
-  onboarded: false, lang: 'lt', activity: 'light', pace: 0.5,
+  onboarded: false, lang: 'lt', activity: 'light', pace: 0.5, goalWeight: null,
 };
 
 export const WORKOUT_MET = 4.5;
@@ -117,4 +117,15 @@ export interface DayStat {
 export function dayStat(date: string, day: Day | undefined, s: Settings): DayStat {
   const t = totals(day, s), out = baseline(s) + t.burned;
   return { d: date, kcal: t.kcal, protein: t.protein, burned: t.burned, out, bal: t.kcal - out, steps: day?.steps ?? 0, workouts: day?.ex.length ?? 0, logged: t.kcal > 0 };
+}
+
+/* ---------- svoris ---------- */
+/** Slankusis vidurkis: kiekvienai datai – paskutinių `days` dienų įrašų vidurkis. Įrašai surikiuoti pagal datą. */
+export function weightTrend(entries: { date: string; kg: number }[], days = 7): { date: string; kg: number; avg: number }[] {
+  const ms = (d: string) => Date.parse(d + 'T00:00:00Z');
+  return entries.map((e, i) => {
+    const from = ms(e.date) - (days - 1) * 864e5;
+    const win = entries.slice(0, i + 1).filter((x) => ms(x.date) >= from);
+    return { ...e, avg: Math.round(win.reduce((a, x) => a + x.kg, 0) / win.length * 10) / 10 };
+  });
 }

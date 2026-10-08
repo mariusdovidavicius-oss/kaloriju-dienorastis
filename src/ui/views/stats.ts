@@ -5,6 +5,7 @@ import { parseD, periodDays, today } from '../../lib/dates';
 import { esc, fmtStamp, fmtTime, fmtWeekday, nf, nf1 } from '../../lib/format';
 import { toast } from '../dom';
 import { aiErr, type AppState } from '../state';
+import { openWeight, weightChartHtml } from './weight';
 
 let insightBusy = false;
 
@@ -14,6 +15,8 @@ export function renderStats(s: AppState, root: HTMLElement) {
   const done = all.filter((x) => x.logged && x.d !== td);
   let h = '<header class="top"><div class="daytitle"><h1>' + esc(t('navStats')) + '</h1>'
     + '<div class="seg small" role="group">' + [7, 30].map((k) => '<button type="button" data-n="' + k + '" aria-pressed="' + (n === k) + '">' + esc(t(k === 7 ? 'days7' : 'days30')) + '</button>').join('') + '</div></div></header>';
+
+  h += weightChartHtml(s, n);
 
   // šiandienos balansas
   const tt = s.totals(td), out = baseline(g) + tt.burned, net = tt.kcal - out;
@@ -94,6 +97,7 @@ export function bindStats(s: AppState, root: HTMLElement) {
   root.addEventListener('click', async (e) => {
     const el = e.target as HTMLElement;
     const nb = el.closest<HTMLElement>('[data-n]'); if (nb) { s.statsN = +nb.dataset.n!; s.changed(); return; }
+    if (el.closest('[data-weight]')) { openWeight(s, today()); return; }
     const d = (e.target as Element).closest('[data-day]'); if (d) { s.tab = 'today'; s.goDay(d.getAttribute('data-day')!); return; }
     if (el.id === 'insightBtn' && !insightBusy) {
       const n = s.statsN, lines = insightLines(s, n);

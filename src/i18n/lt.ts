@@ -299,6 +299,50 @@ export const lt = {
   authErr: 'Nepavyko: {msg}',
 
   foot: 'Kalorijos įvertinamos apytiksliai. Tiksliausia nurodyti gramus.',
+
+  // svoris
+  weight: 'Svoris',
+  weightLog: 'Įrašyti svorį',
+  weightFirst: 'Įrašyk savo svorį – matysi tikrą progresą.',
+  weightGoalShort: 'tikslas {n} kg',
+  weightToGo: 'liko {n} kg',
+  weightReached: 'Tikslas pasiektas!',
+  weightAvg7: '7 d. vidurkis {n} kg',
+  weightDate: 'Data',
+  weightSaved: 'Svoris išsaugotas: {n} kg',
+  goalWeightKg: 'Tikslo svoris, kg (nebūtina)',
+  weightChart: 'Svorio kitimas',
+  weightChartHint: 'Taškai – įrašyti svoriai, linija – 7 dienų vidurkis (jis mažiau šokinėja dėl vandens). Punktyras – tikslas.',
+  weightChange: 'Pokytis per {n} d.',
+  weightNoData: 'Įrašyk svorį bent 2 kartus, ir čia atsiras grafikas.',
+  weightLost: 'Numesta nuo pradžios',
+  weightDeleted: 'Svoris ištrintas',
+
+  // paieška ir skaitytuvas
+  searchPh: 'Ieškoti produkto, pvz. varškė',
+  scan: 'Skenuoti',
+  scanTitle: 'Brūkšninis kodas',
+  scanHint: 'Nukreipk kamerą į brūkšninį kodą.',
+  codePh: 'Arba įvesk kodą',
+  find: 'Rasti',
+  scanNoCamera: 'Kamera nepasiekiama. Įvesk kodą ranka.',
+  offNotFound: 'Prekė nerasta Open Food Facts bazėje. Įvesk rankiniu būdu arba nufotografuok etiketę Skaičiuoklėje.',
+  offNoData: 'Prekė rasta, bet joje nėra kalorijų duomenų.',
+  offNetwork: 'Nepavyko pasiekti Open Food Facts. Patikrink ryšį.',
+  offSearch: 'Ieškoti Open Food Facts',
+  srcBase: 'bazė',
+  srcMine: 'mano',
+  srcOff: 'OFF',
+  noResults: 'Nieko nerasta.',
+  toMyProducts: '☆ Į Mano produktus',
+  addedToMine: 'Pridėta į Mano produktus.',
+  describeAi: 'Aprašyti laisvai (Claude)',
+  baseNote: 'Bendros bazės vertės apytikslės. Tikslius skaičius rasi etiketėje arba nuskenavęs kodą.',
+
+  // be interneto
+  offlineBar: 'Nėra ryšio. Įrašai saugomi telefone ir bus išsiųsti, kai ryšys atsiras.',
+  offlinePending: 'Nėra ryšio. Laukia išsiuntimo: {n}.',
+  syncing: 'Siunčiama… ({n})',
 };
 
 export type Dict = { [K in keyof typeof lt]: string };

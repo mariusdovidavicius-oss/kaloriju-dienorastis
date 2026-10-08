@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 // Testai veikia bandomajame režime (duomenys atmintyje, netikras AI) – tikri duomenys neliečiami.
 type Item = { name: string; kcal: number; meal: string };
 type W = {
-  __store: { calls: string[]; days: Record<string, { items: Item[]; steps: number; ex: unknown[] }>; products: { name: string }[]; meals: { name: string }[]; settings: { kcal: number; protein: number; onboarded: boolean; lang: string } };
+  __store: { offline: boolean; calls: string[]; days: Record<string, { items: Item[]; steps: number; ex: unknown[] }>; products: { name: string }[]; meals: { name: string }[]; settings: { kcal: number; protein: number; onboarded: boolean; lang: string } };
   __ai: { calls: { task: string; text: string; image: boolean }[] };
 };
 const store = (page: Page) => page.evaluate(() => (window as unknown as W).__store);
@@ -14,7 +14,7 @@ const sheet = (page: Page) => page.locator('.sheet-panel');
 async function open(page: Page, query = '') {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/status of 404/.test(m.text())) errors.push(m.text()); });
   (page as unknown as { __errors: string[] }).__errors = errors;
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await page.addInitScript(() => { try { localStorage.setItem('kd-lang', 'lt'); } catch { /* */ } });
@@ -195,7 +195,7 @@ test.describe('pagrindinis', () => {
     await expect(page.locator('.ring-num')).toHaveText(/1\s?490/);
     await expect(page.locator('.balance')).toBeVisible();
     await page.locator('[data-nav="stats"]').click();
-    await expect(page.locator('#viewStats .tiles').nth(1)).toContainText('Vid. suvalgyta');
+    await expect(page.locator('#viewStats')).toContainText('Vid. suvalgyta');
     await page.locator('#insightBtn').click();
     await expect(page.locator('#insightTxt')).toContainText('Bandomasis pastebėjimas');
   });
@@ -213,6 +213,80 @@ test.describe('pagrindinis', () => {
     expect(small).toEqual([]);
     await page.locator('[data-nav="add"]').click();
     expect(await page.evaluate(() => document.querySelector('.sheet-body')!.scrollWidth - document.querySelector('.sheet-body')!.clientWidth)).toBeLessThanOrEqual(0);
+  });
+});
+
+test.describe('2 etapas', () => {
+  test.beforeEach(async ({ page }) => { await open(page); await expect(page.locator('#viewToday')).toBeVisible(); });
+
+  test('svoris: kortelė su tikslu, įrašymas, grafikas', async ({ page }) => {
+    const card = page.locator('.weightcard');
+    await expect(card).toContainText('93,8 kg');
+    await expect(card).toContainText('tikslas 85 kg');
+    await card.locator('[data-weight]').click();
+    await sheet(page).locator('#wKg').fill('93,2');
+    await sheet(page).getByRole('button', { name: 'Išsaugoti' }).click();
+    await expect(card).toContainText('93,2 kg');
+    const s = await store(page);
+    expect((s as unknown as { weights: { date: string; kg: number }[] }).weights.at(-1)).toEqual({ date: today(), kg: 93.2 });
+    expect(s.settings.weight).toBe(93.2);
+    await page.locator('[data-nav="stats"]').click();
+    await expect(page.locator('#viewStats')).toContainText('Svorio kitimas');
+    await expect(page.locator('#viewStats svg.chart circle')).toHaveCount(5);
+  });
+
+  test('paieška bazėje be lietuviškų raidžių ir įrašymas vienetais', async ({ page }) => {
+    await page.locator('.addbtn[data-add="pusryciai"]').click();
+    await sheet(page).locator('#q').fill('kiausinis');
+    await sheet(page).locator('.results [data-mp]', { hasText: /^Kiaušinis/ }).first().click();
+    await sheet(page).locator('#mpN').fill('3');
+    await expect(sheet(page).locator('#mpTot')).toContainText('236 kcal');
+    await sheet(page).locator('#mpAdd').click();
+    await expect(page.locator('[data-meal="pusryciai"] .r-name')).toHaveText('Kiaušinis');
+    await expect(page.locator('[data-meal="pusryciai"] .r-sub')).toContainText('3 × vnt. (165 g)');
+    expect(await aiCalls(page)).toHaveLength(0);
+  });
+
+  test('bazės produktą galima įsidėti į Mano produktus', async ({ page }) => {
+    await page.locator('[data-nav="add"]').click();
+    await sheet(page).locator('#q').fill('skyras');
+    await sheet(page).locator('.results [data-mp]').first().click();
+    await sheet(page).locator('#toMine').click();
+    await expect(sheet(page).locator('#toMine')).toHaveCount(0);
+    expect((await store(page)).products.map((p) => p.name)).toContain('Skyras');
+  });
+
+  test('brūkšninis kodas (įvestas ranka) → Open Food Facts', async ({ page }) => {
+    await page.route('**/api/v2/product/4770000000000.json*', (r) => r.fulfill({ json: { status: 1, product: { product_name: 'Varškė 0,5 %', brands: 'Rokiškio', nutriments: { 'energy-kcal_100g': 76, proteins_100g: 16, carbohydrates_100g: 2, fat_100g: 0.5 } } } }));
+    await page.route('**/api/v2/product/1111111111111.json*', (r) => r.fulfill({ status: 404, json: { status: 0 } }));
+    await page.locator('[data-nav="add"]').click();
+    await sheet(page).locator('#scanBtn').click();
+    await sheet(page).locator('#codeIn').fill('1111111111111');
+    await sheet(page).locator('#codeForm button').click();
+    await expect(sheet(page).locator('#addStatus')).toContainText('nerasta');
+    await sheet(page).locator('#scanBtn').click();
+    await sheet(page).locator('#codeIn').fill('4770000000000');
+    await sheet(page).locator('#codeForm button').click();
+    await expect(sheet(page).locator('.qty b')).toHaveText('Rokiškio Varškė 0,5 %');
+    await sheet(page).locator('#mpG').fill('200');
+    await expect(sheet(page).locator('#mpTot')).toContainText('152 kcal');
+    await sheet(page).locator('#mpAdd').click();
+    await expect(page.locator('#toast')).toContainText('Rokiškio Varškė');
+  });
+
+  test('be interneto: juosta, įrašai išsaugomi atsiradus ryšiui', async ({ page }) => {
+    await page.evaluate(() => { (window as unknown as W).__store.offline = true; });
+    await page.locator('.addbtn[data-add="pietus"]').click();
+    await sheet(page).locator('details.manual summary').click();
+    await sheet(page).locator('#manName').fill('Sriuba');
+    await sheet(page).locator('#manKcal').fill('250');
+    await sheet(page).locator('#manForm button').click();
+    await expect(page.locator('#syncBar')).toContainText('Nėra ryšio');
+    await expect(page.locator('[data-meal="pietus"] .r-name')).toHaveText('Sriuba');
+    expect((await store(page)).calls).not.toContain('addFood');
+    await page.evaluate(() => { (window as unknown as W).__store.offline = false; window.dispatchEvent(new Event('online')); });
+    await expect(page.locator('#syncBar')).toBeHidden();
+    expect((await store(page)).days[today()].items.map((i) => i.name)).toEqual(['Sriuba']);
   });
 });
 

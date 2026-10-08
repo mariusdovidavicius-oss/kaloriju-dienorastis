@@ -1,11 +1,14 @@
 // „Pridėti“ langas: Maistas (AI aprašymas, nuotrauka, Mano produktai, dažni, neseniai, rankinis),
 // Sportas (treniruotė, žingsniai) ir Skaičiuoklė (produktas, valgio planas, palyginimas, lengvesni produktai).
-import { t } from '../../i18n';
+import { lang, t } from '../../i18n';
+import { FOODS, norm, searchFoods, stem, type Food } from '../../data/foods';
+import { offByBarcode, offSearch } from '../../lib/off';
+import { cameraAvailable, startScanner, type Scanner } from '../scanner';
 import { dayLimit, gramsPer, isGramUnit, isMealPlan, MEALS, mealKcal, mealLabel, mealOf, pPer100kcal, stepsKcal, verdict, workoutKcal } from '../../lib/calc';
 import { addDays, parseD, today } from '../../lib/dates';
 import { esc, fmtDate, newId, nf, nf1, r1 } from '../../lib/format';
 import { prepareImage } from '../../lib/image';
-import type { AlternativesResult, EstimatedItem, FoodItem, LookupResult, MealItem, MealKey } from '../../types';
+import type { AlternativesResult, EstimatedItem, FoodItem, LookupResult, MealItem, MealKey, Product } from '../../types';
 import { inp, maybe, toast } from '../dom';
 import { closeSheet, openSheet } from '../sheet';
 import { aiErr, type AppState } from '../state';
@@ -24,8 +27,10 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
     meal: opts.meal, tab: opts.tab, busy: false, file: null as File | null, mpSel: null as string | null,
     cbusy: false, cfile: null as File | null, cres: null as (LookupResult & { id: string }) | null, plan: null as PlanItem[] | null,
     cmp: loadCmp(), alt: null as AlternativesResult | null, altBusy: false,
+    q: '', extra: {} as Record<string, Product>, offResults: null as Product[] | null, offBusy: false,
   };
-  const sheet = openSheet(t('addTo', { meal: mealLabel(st.meal) }), { id: 'addSheet' });
+  let scanner: Scanner | null = null;
+  const sheet = openSheet(t('addTo', { meal: mealLabel(st.meal) }), { id: 'addSheet', onClose: () => scanner?.stop() });
   const root = sheet.body;
   const status = (msg: string, err = false) => { const el = maybe('#addStatus', root); if (el) { el.textContent = msg; el.className = 'status' + (err ? ' err' : ''); } };
   const done = (msg: string) => { closeSheet(); toast(msg); };
@@ -50,15 +55,15 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
     h += '<div class="status" id="addStatus" role="status"></div>';
     root.innerHTML = h;
     if (st.tab === 'calc') { renderCalcOut(); renderCmp(); renderAlt(); }
-    if (st.tab === 'food') renderQty();
+    if (st.tab === 'food') { renderResults(); renderQty(); }
   }
 
   function foodHtml() {
-    const ps = s.products, ms = s.meals, v = s.view;
-    const yd = s.day(addDays(v, -1)).items.filter((i) => mealOf(i) === st.meal);
-    const mine = s.day(v).items.filter((i) => mealOf(i) === st.meal);
-    const recent = s.recentFoods(10);
     return '<div class="slots" role="group" aria-label="' + esc(t('meal')) + '">' + MEALS.map(([k]) => '<button type="button" class="chipbtn' + (st.meal === k ? ' sel' : '') + '" data-slot="' + k + '" aria-pressed="' + (st.meal === k) + '">' + esc(mealLabel(k)) + '</button>').join('') + '</div>'
+      + '<div class="searchbar"><input type="search" id="q" placeholder="' + esc(t('searchPh')) + '" aria-label="' + esc(t('searchPh')) + '" value="' + esc(st.q) + '" autocomplete="off" enterkeyhint="search">'
+      + '<button type="button" class="btn" id="scanBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7V5h3M17 5h3v2M20 17v2h-3M7 19H4v-2M7 9v6M10 9v6M13 9v6M16 9v6"/></svg>' + esc(t('scan')) + '</button></div>'
+      + '<div id="scanBox"></div><div id="mpQty"></div><div id="results"></div>'
+      + '<h3>' + esc(t('describeAi')) + '</h3>'
       + '<form class="describe" id="aiForm" autocomplete="off">'
       + '<textarea id="foodInput" rows="2" placeholder="' + esc(t('describePh')) + '" aria-label="' + esc(t('describePh')) + '"></textarea>'
       + '<div class="describe-row"><input type="number" id="foodGrams" placeholder="' + esc(t('gramsPh')) + '" aria-label="' + esc(t('gramsLabel')) + '" min="1" max="5000" inputmode="numeric">'
@@ -66,18 +71,79 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
       + '<button type="submit" class="btn main" id="aiBtn"' + (st.busy ? ' disabled' : '') + '>' + esc(st.busy ? t('calculating') : t('calculate')) + '</button></div>'
       + (st.file ? '<span class="filechip"><span>' + esc(st.file.name || 'foto') + '</span><button type="button" data-clear-photo aria-label="' + esc(t('removePhoto')) + '">×</button></span>' : '')
       + '<p class="hint">' + esc(t('aiNote')) + '</p></form>'
-      + '<h3>' + esc(t('myProducts')) + '</h3><div class="chips">' + (ps.length ? ps.map((p) => '<button type="button" class="chipbtn' + (st.mpSel === p.id ? ' sel' : '') + '" data-mp="' + esc(p.id) + '">' + esc(p.name) + '<small class="num">' + nf(p.kcal) + '/' + esc(p.unit) + '</small></button>').join('') : '<span class="hint">' + esc(t('noProducts')) + '</span>') + '</div>'
-      + '<div id="mpQty"></div>'
-      + '<h3>' + esc(t('frequentMeals')) + '</h3><div class="chips">'
-      + (!mine.length && yd.length ? '<button type="button" class="chipbtn dashed" data-yday>' + esc(t('likeYesterday')) + '<small class="num">' + nf(mealKcal(yd)) + ' kcal</small></button>' : '')
-      + (ms.length ? ms.map((m) => '<button type="button" class="chipbtn" data-ml="' + esc(m.id) + '">' + esc(m.name) + '<small class="num">' + nf(mealKcal(m.items)) + ' kcal</small></button>').join('') : (yd.length && !mine.length ? '' : '<span class="hint">' + esc(t('noMeals')) + '</span>'))
-      + '</div>'
-      + (recent.length ? '<h3>' + esc(t('recent')) + '</h3><div class="chips">' + recent.map((r, i) => '<button type="button" class="chipbtn" data-recent="' + i + '">' + esc(r.name) + '<small class="num">' + nf(r.kcal) + ' kcal</small></button>').join('') + '</div>' : '')
       + '<details class="manual"><summary>' + esc(t('manual')) + '</summary><form class="grid3" id="manForm" autocomplete="off">'
       + '<input type="text" id="manName" placeholder="' + esc(t('name')) + '" aria-label="' + esc(t('name')) + '" required maxlength="80">'
       + '<input type="number" id="manKcal" placeholder="kcal" aria-label="kcal" min="0" step="1" required inputmode="numeric">'
       + '<input type="number" id="manProt" placeholder="' + esc(t('protein')) + ', g" aria-label="' + esc(t('protein')) + ', g" min="0" step="0.1" inputmode="decimal">'
       + '<button type="submit" class="btn">' + esc(t('add')) + '</button></form></details>';
+  }
+
+  /** Paieškos rezultatai arba greiti pasirinkimai, kai paieška tuščia. */
+  function renderResults() {
+    const out = maybe('#results', root); if (!out) return;
+    const q = st.q.trim();
+    if (!q) {
+      const ps = s.products, ms = s.meals, v = s.view;
+      const yd = s.day(addDays(v, -1)).items.filter((i) => mealOf(i) === st.meal);
+      const mine = s.day(v).items.filter((i) => mealOf(i) === st.meal);
+      const recent = s.recentFoods(10);
+      out.innerHTML = (recent.length ? '<h3>' + esc(t('recent')) + '</h3><div class="chips">' + recent.map((r, i) => '<button type="button" class="chipbtn" data-recent="' + i + '">' + esc(r.name) + '<small class="num">' + nf(r.kcal) + ' kcal</small></button>').join('') + '</div>' : '')
+        + '<h3>' + esc(t('myProducts')) + '</h3><div class="chips">' + (ps.length ? ps.map((p) => '<button type="button" class="chipbtn' + (st.mpSel === p.id ? ' sel' : '') + '" data-mp="' + esc(p.id) + '">' + esc(p.name) + '<small class="num">' + nf(p.kcal) + '/' + esc(p.unit) + '</small></button>').join('') : '<span class="hint">' + esc(t('noProducts')) + '</span>') + '</div>'
+        + '<h3>' + esc(t('frequentMeals')) + '</h3><div class="chips">'
+        + (!mine.length && yd.length ? '<button type="button" class="chipbtn dashed" data-yday>' + esc(t('likeYesterday')) + '<small class="num">' + nf(mealKcal(yd)) + ' kcal</small></button>' : '')
+        + (ms.length ? ms.map((m) => '<button type="button" class="chipbtn" data-ml="' + esc(m.id) + '">' + esc(m.name) + '<small class="num">' + nf(mealKcal(m.items)) + ' kcal</small></button>').join('') : (yd.length && !mine.length ? '' : '<span class="hint">' + esc(t('noMeals')) + '</span>'))
+        + '</div>';
+      return;
+    }
+    const nq = norm(q);
+    const mine = s.products.filter((p) => nq.split(' ').map(stem).every((w) => norm(p.name).includes(w))).slice(0, 8);
+    const base = searchFoods(q, 20).map(foodProduct);
+    const off = st.offResults;
+    const row = (p: Product, src: string) => '<li><button type="button" class="row" data-mp="' + esc(p.id) + '"><span class="r-main"><span class="r-name">' + esc(p.name) + '</span><span class="r-sub num">'
+      + (/^100 ?(g|ml)$/.test(p.unit) ? nf(p.kcal) + ' kcal / 100 g' : nf(p.kcal) + ' kcal / ' + esc(p.unit) + (p.grams ? ' (' + nf(p.grams) + ' g)' : ''))
+      + ' · ' + esc(t('proteinShort', { n: nf1(p.protein) })) + '</span></span><span class="src">' + esc(src) + '</span></button></li>';
+    const list = mine.map((p) => row(p, t('srcMine'))).concat(base.map((p) => row(p, t('srcBase')))).concat((off || []).map((p) => row(p, t('srcOff'))));
+    out.innerHTML = (list.length ? '<ul class="rows results">' + list.join('') + '</ul>' : '<p class="hint">' + esc(t('noResults')) + '</p>')
+      + (base.length ? '<p class="hint">' + esc(t('baseNote')) + '</p>' : '')
+      + (off ? '' : '<button type="button" class="btn" id="offSearch"' + (st.offBusy ? ' disabled' : '') + '>' + esc(st.offBusy ? t('searching') : t('offSearch')) + '</button>');
+  }
+
+  /** Bazės produktas → Mano produktų formatas (vienetui arba 100 g). */
+  function foodProduct(f: Food): Product {
+    const L = lang(), name = L === 'en' ? f.en : f.lt;
+    if (f.unit) { const k = f.unit.g / 100; return { id: f.id, name, unit: L === 'en' ? f.unit.en : f.unit.lt, grams: f.unit.g, kcal: r1(f.kcal * k), protein: r1(f.protein * k), carbs: r1(f.carbs * k), fat: r1(f.fat * k) }; }
+    return { id: f.id, name, unit: '100 g', grams: 100, kcal: f.kcal, protein: f.protein, carbs: f.carbs, fat: f.fat };
+  }
+  function pick(id: string | null): Product | undefined {
+    if (!id) return undefined;
+    return s.products.find((p) => p.id === id) || st.extra[id] || (FOODS.find((f) => f.id === id) ? foodProduct(FOODS.find((f) => f.id === id)!) : undefined);
+  }
+
+  /* ---------- skaitytuvas ---------- */
+  async function openScanner() {
+    const box = maybe('#scanBox', root); if (!box) return;
+    box.innerHTML = '<div class="scanbox card"><div class="res-head"><h3>' + esc(t('scanTitle')) + '</h3><button type="button" class="iconbtn sm" id="scanClose" aria-label="' + esc(t('close')) + '">×</button></div>'
+      + (cameraAvailable() ? '<video id="scanVideo" playsinline muted></video><p class="hint">' + esc(t('scanHint')) + '</p>' : '<p class="hint">' + esc(t('scanNoCamera')) + '</p>')
+      + '<form class="describe-row" id="codeForm"><input type="text" id="codeIn" class="grow" inputmode="numeric" pattern="[0-9]{6,14}" placeholder="' + esc(t('codePh')) + '" aria-label="' + esc(t('codePh')) + '"><button type="submit" class="btn">' + esc(t('find')) + '</button></form></div>';
+    const v = maybe<HTMLVideoElement>('#scanVideo', box);
+    if (v) {
+      try { scanner = await startScanner(v, (code) => { void lookupCode(code); }); }
+      catch { v.remove(); status(t('scanNoCamera'), true); }
+    }
+  }
+  function closeScanner() { scanner?.stop(); scanner = null; const box = maybe('#scanBox', root); if (box) box.innerHTML = ''; }
+  async function lookupCode(code: string) {
+    closeScanner();
+    status(t('searching'));
+    try {
+      const p = await offByBarcode(code, lang());
+      st.extra[p.id] = p; st.mpSel = p.id; status('');
+      renderQty();
+      maybe('#mpQty', root)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } catch (e) {
+      const c = (e as { code?: string }).code;
+      status(t(c === 'notfound' ? 'offNotFound' : c === 'nodata' ? 'offNoData' : 'offNetwork'), true);
+    }
   }
 
   function sportHtml() {
@@ -104,16 +170,17 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
   /* ---------- Mano produktai: kiekis ---------- */
   function renderQty() {
     const q = maybe('#mpQty', root); if (!q) return;
-    const sel = s.products.find((p) => p.id === st.mpSel);
+    const sel = pick(st.mpSel);
     if (!sel) { q.innerHTML = ''; return; }
-    const gp = gramsPer(sel);
-    q.innerHTML = '<div class="qty"><b>' + esc(sel.name) + '</b><div class="qty-row"><span class="stepper"><button type="button" data-step="-1" aria-label="−">−</button><input type="number" id="mpN" value="1" min="0.25" step="0.25" aria-label="' + esc(t('quantity')) + '" inputmode="decimal"><button type="button" data-step="1" aria-label="+">+</button></span><span>' + esc(sel.unit) + '</span>'
+    const gp = gramsPer(sel), isMine = s.products.some((p) => p.id === sel.id);
+    q.innerHTML = '<div class="qty"><div class="res-head"><b>' + esc(sel.name) + '</b><button type="button" class="iconbtn sm" id="mpCancel" aria-label="' + esc(t('cancel')) + '">×</button></div><div class="qty-row"><span class="stepper"><button type="button" data-step="-1" aria-label="−">−</button><input type="number" id="mpN" value="1" min="0.25" step="0.25" aria-label="' + esc(t('quantity')) + '" inputmode="decimal"><button type="button" data-step="1" aria-label="+">+</button></span><span>' + esc(sel.unit) + '</span>'
       + (gp ? '<span>' + esc(t('orGrams')) + '</span><input type="number" class="gin" id="mpG" min="1" max="5000" inputmode="numeric" aria-label="g" value="' + Math.round(gp) + '"><span>g</span>' : '') + '</div>'
-      + '<div class="qty-row"><span class="tot num" id="mpTot"></span><button type="button" class="btn main" id="mpAdd">' + esc(t('add')) + '</button></div></div>';
+      + '<div class="qty-row"><span class="tot num" id="mpTot"></span><button type="button" class="btn main" id="mpAdd">' + esc(t('add')) + '</button></div>'
+      + (isMine ? '' : '<button type="button" class="linkbtn small" id="toMine">' + esc(t('toMyProducts')) + '</button>') + '</div>';
     mpTot();
   }
   function mpTot() {
-    const sel = s.products.find((p) => p.id === st.mpSel), n = parseFloat(maybe<HTMLInputElement>('#mpN', root)?.value || '') || 0, el = maybe('#mpTot', root);
+    const sel = pick(st.mpSel), n = parseFloat(maybe<HTMLInputElement>('#mpN', root)?.value || '') || 0, el = maybe('#mpTot', root);
     if (sel && el) el.textContent = '= ' + nf(sel.kcal * n) + ' kcal, ' + t('proteinShort', { n: nf1((sel.protein || 0) * n) });
   }
 
@@ -188,10 +255,29 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
     if (el.closest('[data-clear-photo]')) { st.file = null; render(); return; }
     if (el.closest('[data-clear-cphoto]')) { st.cfile = null; render(); return; }
     const mp = el.closest<HTMLElement>('[data-mp]');
-    if (mp) { st.mpSel = st.mpSel === mp.dataset.mp ? null : mp.dataset.mp!; root.querySelectorAll('[data-mp]').forEach((b) => b.classList.toggle('sel', (b as HTMLElement).dataset.mp === st.mpSel)); renderQty(); maybe<HTMLInputElement>('#mpN', root)?.select(); return; }
+    if (mp) {
+      st.mpSel = st.mpSel === mp.dataset.mp ? null : mp.dataset.mp!;
+      root.querySelectorAll('[data-mp]').forEach((b) => b.classList.toggle('sel', (b as HTMLElement).dataset.mp === st.mpSel));
+      renderQty(); maybe('#mpQty', root)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return;
+    }
+    if (el.id === 'mpCancel') { st.mpSel = null; renderQty(); renderResults(); return; }
+    if (el.id === 'toMine') {
+      const sel = pick(st.mpSel); if (!sel) return;
+      const p: Product = { ...sel, id: newId() };
+      s.addProduct(p); st.mpSel = p.id; status(t('addedToMine')); renderQty(); return;
+    }
+    if (el.closest('#scanBtn')) { void openScanner(); return; }
+    if (el.id === 'scanClose') { closeScanner(); return; }
+    if (el.id === 'offSearch') {
+      st.offBusy = true; renderResults();
+      offSearch(st.q, lang()).then((r) => { r.forEach((p) => (st.extra[p.id] = p)); st.offResults = r; })
+        .catch(() => { st.offResults = null; status(t('offNetwork'), true); })
+        .finally(() => { st.offBusy = false; renderResults(); });
+      return;
+    }
     const step = el.closest<HTMLElement>('[data-step]');
     if (step) {
-      const n = inp('#mpN', root), sel = s.products.find((p) => p.id === st.mpSel);
+      const n = inp('#mpN', root), sel = pick(st.mpSel);
       n.value = String(Math.max(0.25, (parseFloat(n.value) || 0) + +step.dataset.step!));
       const g = maybe<HTMLInputElement>('#mpG', root); if (sel && g && gramsPer(sel)) g.value = String(Math.round(parseFloat(n.value) * gramsPer(sel)));
       mpTot(); return;
@@ -237,7 +323,8 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
   });
 
   root.addEventListener('input', (e) => {
-    const el = e.target as HTMLInputElement, sel = s.products.find((p) => p.id === st.mpSel), gp = sel ? gramsPer(sel) : 0;
+    const el = e.target as HTMLInputElement, sel = pick(st.mpSel), gp = sel ? gramsPer(sel) : 0;
+    if (el.id === 'q') { st.q = el.value; st.offResults = null; renderResults(); return; }
     if (el.id === 'mpN') { const g = maybe<HTMLInputElement>('#mpG', root); if (gp && g) g.value = String(Math.round((parseFloat(el.value) || 0) * gp)); mpTot(); }
     if (el.id === 'mpG' && gp) { inp('#mpN', root).value = String(Math.round((parseFloat(el.value) || 0) / gp * 100) / 100); mpTot(); }
     if (el.id === 'calcG' && st.cres) { const g = Math.round(parseFloat(el.value)); if (g > 0 && g <= 5000) { st.cres.grams = g; updatePortion(); } }
@@ -257,6 +344,7 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
     else if (f.id === 'sportForm') submitSport();
     else if (f.id === 'calcForm') await submitCalc();
     else if (f.id === 'altForm') await submitAlt();
+    else if (f.id === 'codeForm') { const c = inp('#codeIn', root).value.replace(/\D/g, ''); if (c.length >= 6) await lookupCode(c); }
   });
 
   // Enter aprašyme = skaičiuoti (Shift+Enter – nauja eilutė)
@@ -274,14 +362,15 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
     done(t('addedTo', { what: label, kcal: nf(mealKcal(items)), meal: mealLabel(st.meal) }));
   }
   function addProductQty() {
-    const sel = s.products.find((p) => p.id === st.mpSel), n = parseFloat(inp('#mpN', root).value);
+    const sel = pick(st.mpSel), n = parseFloat(inp('#mpN', root).value);
     if (!sel || !(n > 0 && n <= 100)) return;
+    const isMine = s.products.some((p) => p.id === sel.id);
     const nn = Math.round(n * 100) / 100, gp = gramsPer(sel);
     s.addFood([{
       id: newId(), name: sel.name,
       amount: isGramUnit(sel) ? nf(gp * nn) + ' ' + (/ml$/i.test(sel.unit) ? 'ml' : 'g') : nf1(nn) + ' × ' + sel.unit + (gp ? ' (' + nf(gp * nn) + ' g)' : ''),
       kcal: Math.round(sel.kcal * nn), protein: r1((sel.protein || 0) * nn), carbs: r1((sel.carbs || 0) * nn), fat: r1((sel.fat || 0) * nn),
-      t: Date.now(), meal: st.meal, productId: sel.id, source: 'product',
+      t: Date.now(), meal: st.meal, productId: isMine ? sel.id : null, source: 'product',
     }]);
     done(t('addedTo', { what: sel.name, kcal: nf(sel.kcal * nn), meal: mealLabel(st.meal) }));
   }

@@ -1,4 +1,4 @@
-import type { Day, FoodItem, Insight, Product, SavedMeal, Settings, Workout } from '../types';
+import type { Day, FoodItem, Insight, Product, SavedMeal, Settings, WeightEntry, Workout } from '../types';
 
 export interface InitialData {
   settings: Settings;
@@ -6,6 +6,8 @@ export interface InitialData {
   meals: SavedMeal[];
   insight: Insight | null;
   days: Record<string, Day>;
+  /** Visi svorio įrašai, seniausi pirmi. */
+  weights: WeightEntry[];
 }
 
 /**
@@ -38,6 +40,9 @@ export interface Store {
   deleteMeal(id: string): Promise<void>;
 
   saveInsight(i: Insight): Promise<void>;
+
+  /** null – ištrina tos dienos svorį. */
+  setWeight(date: string, kg: number | null): Promise<void>;
 }
 
 export function emptyDay(date: string): Day {

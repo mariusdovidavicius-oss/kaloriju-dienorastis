@@ -17,6 +17,7 @@ export const fmtDate = (d: Date) => get('date', (l) => new Intl.DateTimeFormat(l
 export const fmtWeekday = (d: Date) => get('wd', (l) => new Intl.DateTimeFormat(l, { weekday: 'short' })).format(d).replace('.', '');
 export const fmtTime = (t: number) => get('time', (l) => new Intl.DateTimeFormat(l, { hour: '2-digit', minute: '2-digit' })).format(new Date(t));
 export const fmtStamp = (t: number) => get('stamp', (l) => new Intl.DateTimeFormat(l, { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })).format(new Date(t));
+export const fmtShortDate = (d: Date) => get('sdate', (l) => new Intl.DateTimeFormat(l, { month: 'short', day: 'numeric' })).format(d);
 export const fmtMonth = (d: Date) => get('month', (l) => new Intl.DateTimeFormat(l, { month: 'long', year: 'numeric' })).format(d);
 
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };

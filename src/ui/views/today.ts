@@ -8,6 +8,7 @@ import { toast } from '../dom';
 import type { AppState } from '../state';
 import { openAdd } from './add';
 import { openEdit, openEditSteps, openEditWorkout } from './edit';
+import { openWeight, weightCardHtml } from './weight';
 
 /** Pirmadienis savaitės, kurioje yra data. */
 export function weekStart(d: string) { const x = parseD(d); const wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); return dstr(x); }
@@ -59,6 +60,7 @@ export function renderToday(s: AppState, root: HTMLElement) {
   }
   if (g.addBurned && tt.burned) h += '<p class="hint">' + esc(t('burnedAdded')) + '</p>';
   h += '</section>';
+  h += weightCardHtml(s);
 
   // valgiai
   const food = s.day(v).items.slice().sort((a, b) => a.t - b.t);
@@ -131,6 +133,7 @@ export function bindToday(s: AppState, root: HTMLElement) {
     const wk = el.closest<HTMLElement>('[data-week]');
     if (wk) { const n = +wk.dataset.week!; const d = addDays(weekStart(s.view), n * 7 + (n > 0 ? 0 : 6)); s.goDay(d > today() ? today() : d); return; }
     const add = el.closest<HTMLElement>('[data-add]'); if (add) { openAdd(s, { meal: add.dataset.add as MealKey, tab: 'food' }); return; }
+    if (el.closest('[data-weight]')) { openWeight(s); return; }
     if (el.closest('[data-add-sport]')) { openAdd(s, { meal: s.defaultMeal(), tab: 'sport' }); return; }
     const yes = el.closest<HTMLElement>('[data-mb-yes]');
     if (yes) { const it = s.day(s.view).items.find((i) => i.id === yes.dataset.mbYes); const patch = it && applyProduct(s.products, it); if (patch) { s.updateFood(it!.id, patch); toast(t('added', { what: patch.name, kcal: nf(patch.kcal) })); } return; }

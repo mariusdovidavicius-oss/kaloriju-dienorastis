@@ -7,7 +7,7 @@ import { inp } from '../dom';
 
 const STEPS = 4;
 
-export function runOnboarding(root: HTMLElement, initial: Settings, onDone: (s: Settings) => void) {
+export function runOnboarding(root: HTMLElement, initial: Settings, onDone: (s: Settings, weightKg: number) => void) {
   const st: Settings = { ...initial };
   let step = 0, warn = '';
 
@@ -23,7 +23,8 @@ export function runOnboarding(root: HTMLElement, initial: Settings, onDone: (s: 
         + '<h2>' + esc(t('obAboutYou')) + '</h2>' + radio('sex', [['m', t('male')], ['f', t('female')]], st.sex)
         + '<div class="grid2">' + num('obAge', t('age'), st.age, 14, 100) + '</div>';
     } else if (step === 1) {
-      body = '<h2>' + esc(t('obBody')) + '</h2><div class="grid2">' + num('obHeight', t('heightCm'), st.height, 120, 230) + num('obWeight', t('weightKg'), st.weight, 30, 300, 0.1) + '</div>';
+      body = '<h2>' + esc(t('obBody')) + '</h2><div class="grid2">' + num('obHeight', t('heightCm'), st.height, 120, 230) + num('obWeight', t('weightKg'), st.weight, 30, 300, 0.1)
+        + '<label class="span2">' + esc(t('goalWeightKg')) + '<input type="number" id="obGoalW" min="30" max="300" step="0.1" inputmode="decimal" value="' + (st.goalWeight ?? '') + '"></label></div>';
     } else if (step === 2) {
       body = '<h2>' + esc(t('obGoal')) + '</h2><p class="lead">' + esc(t('obActivity')) + '</p>'
         + radio('act', [['low', t('actLow')], ['light', t('actLight')], ['mid', t('actMid')]], st.activity)
@@ -60,14 +61,16 @@ export function runOnboarding(root: HTMLElement, initial: Settings, onDone: (s: 
     if (step === 1) {
       const h = Math.round(val('obHeight')), w = Math.round(val('obWeight') * 10) / 10;
       if (!(h >= 120 && h <= 230) || !(w >= 30 && w <= 300)) return bad();
-      st.height = h; st.weight = w;
+      const gRaw = inp('#obGoalW', root).value.trim(), gw = gRaw ? Math.round(val('obGoalW') * 10) / 10 : null;
+      if (gw != null && !(gw >= 30 && gw <= 300)) return bad();
+      st.height = h; st.weight = w; st.goalWeight = gw;
     }
     if (step === 2) { const r = suggestGoal(st); st.kcal = r.kcal; st.protein = r.protein; warn = r.clamped ? t('obMinWarn', { n: nf(r.min) }) : ''; }
     if (step === 3) {
       const k = Math.round(val('obKcal')), p = Math.round(val('obProt'));
       if (!(k >= 800 && k <= 6000) || !(p >= 20 && p <= 400)) return bad();
       st.kcal = k; st.protein = p;
-      onDone({ ...st, lang: lang(), onboarded: true });
+      onDone({ ...st, lang: lang(), onboarded: true }, st.weight);
       return;
     }
     step++; render();

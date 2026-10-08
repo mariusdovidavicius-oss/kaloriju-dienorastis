@@ -18,6 +18,7 @@ export function renderProfile(s: AppState, root: HTMLElement, ctx: ProfileCtx) {
     + num('gKcal', t('kcalGoal'), g.kcal, 800, 6000, 50) + num('gProt', t('proteinGoal'), g.protein, 20, 400, 5)
     + num('gWeight', t('weightKg'), g.weight, 30, 300, 0.1) + num('gAge', t('age'), g.age, 14, 100)
     + num('gHeight', t('heightCm'), g.height, 120, 230)
+    + '<label>' + esc(t('goalWeightKg')) + '<input type="number" id="gGoalW" min="30" max="300" step="0.1" inputmode="decimal" value="' + (g.goalWeight ?? '') + '"></label>'
     + '<label>' + esc(t('sex')) + '<select id="gSex"><option value="m"' + (g.sex === 'm' ? ' selected' : '') + '>' + esc(t('male')) + '</option><option value="f"' + (g.sex === 'f' ? ' selected' : '') + '>' + esc(t('female')) + '</option></select></label>'
     + '<label class="span2">' + esc(t('obActivity')) + '<select id="gAct">' + (['low', 'light', 'mid'] as Activity[]).map((a) => '<option value="' + a + '"' + (g.activity === a ? ' selected' : '') + '>' + esc(t(a === 'low' ? 'actLow' : a === 'light' ? 'actLight' : 'actMid')) + '</option>').join('') + '</select></label>'
     + '<label class="span2">' + esc(t('obPace')) + '<select id="gPace">' + [[0, 'paceKeep'], [0.25, 'paceSlow'], [0.5, 'paceMid'], [0.75, 'paceFast']].map(([v, k]) => '<option value="' + v + '"' + (g.pace === v ? ' selected' : '') + '>' + esc(t(k as 'paceKeep')) + '</option>').join('') + '</select></label>'
@@ -54,12 +55,15 @@ export function bindProfile(s: AppState, root: HTMLElement, ctx: ProfileCtx) {
     const v = (id: string) => parseFloat(inp('#' + id, root).value.replace(',', '.'));
     const k = Math.round(v('gKcal')), p = Math.round(v('gProt')), w = r1(v('gWeight')), a = Math.round(v('gAge')), h = Math.round(v('gHeight'));
     if (!(k >= 800 && k <= 6000) || !(p >= 20 && p <= 400) || !(w >= 30 && w <= 300) || !(a >= 14 && a <= 100) || !(h >= 120 && h <= 230)) return null;
+    const gwRaw = inp('#gGoalW', root).value.trim(), gw = gwRaw ? r1(v('gGoalW')) : null;
+    if (gw != null && !(gw >= 30 && gw <= 300)) return null;
     return {
       ...s.settings, kcal: k, protein: p, weight: w, age: a, height: h,
       sex: (root.querySelector<HTMLSelectElement>('#gSex')!.value === 'f' ? 'f' : 'm'),
       activity: root.querySelector<HTMLSelectElement>('#gAct')!.value as Activity,
       pace: parseFloat(root.querySelector<HTMLSelectElement>('#gPace')!.value) || 0,
       addBurned: inp('#gBurned', root).checked, accurate: inp('#gAcc', root).checked,
+      goalWeight: gw,
     };
   };
   root.addEventListener('click', (e) => {

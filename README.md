@@ -34,6 +34,11 @@ src/
   data/store.ts        duomenų sluoksnio sąsaja
   data/supabaseStore.ts   tikroji saugykla (Supabase)
   data/memoryStore.ts     bandomoji saugykla (tik atmintyje)
+  data/offlineStore.ts    veikimas be interneto: įrašų eilė telefone + paskutinių duomenų kopija
+  data/foods.ts        bendra produktų bazė (~190 produktų, 100 g, LT/EN) ir paieška
+  lib/off.ts           Open Food Facts: prekė pagal brūkšninį kodą, paieška
+  ui/scanner.ts        brūkšninio kodo skaitytuvas (BarcodeDetector arba ZXing)
+  ui/views/weight.ts   svoris: kortelė, įrašymas, grafikas
   ai/supabaseAi.ts     kviečia serverio funkciją `ai`
   ai/mockAi.ts         netikras AI testams
 supabase/
@@ -59,6 +64,16 @@ npm run build      # tipų patikra + gamybinė versija į dist/
 
 Paspaudus „Pradėti be registracijos“ sukuriama anoniminė Supabase paskyra (reikia įjungti Supabase → Authentication → Sign In / Providers → „Allow anonymous sign-ins“).
 Duomenys saugomi duomenų bazėje kaip ir visiems, bet prisijungimas laikomas tik tame įrenginyje. Mygtukas „Išsaugoti paskyrą“ prie jos prisieja el. paštą – vartotojo id ir visi įrašai lieka; patvirtinus el. paštą paprašoma nusistatyti slaptažodį.
+
+## Be interneto
+
+Visi įrašymai pirmiausia patenka į eilę telefone (`localStorage`, raktas `kd-outbox-<vartotojo id>`) ir išsiunčiami iš eilės.
+Jei nėra ryšio, eilė laukia, viršuje rodoma juosta, o atsiradus ryšiui viskas išsiunčiama. Atidarant programą be ryšio rodoma paskutinė duomenų kopija (`kd-cache-…`) su laukiančiais įrašais.
+
+## Produktų paieška
+
+Bendra bazė (`src/data/foods.ts`) veikia be interneto; vertės apytikslės, pagal įprastas maistinės vertės lenteles.
+Paieška nepaiso lietuviškų raidžių ir galūnių („vistiena“ randa „Vištienos krūtinėlė“). Prekės pagal brūkšninį kodą ir papildoma paieška – iš [Open Food Facts](https://world.openfoodfacts.org).
 
 ## Kalbos
 

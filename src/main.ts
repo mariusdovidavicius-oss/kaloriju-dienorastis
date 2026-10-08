@@ -2,6 +2,7 @@ import './styles.css';
 import { t } from './i18n';
 import { $ } from './ui/dom';
 import { startApp } from './ui/app';
+import { OfflineStore } from './data/offlineStore';
 
 const MOCK = import.meta.env.VITE_MOCK === '1';
 
@@ -19,9 +20,9 @@ async function boot() {
     // Bandomasis režimas: niekas nesiunčiama į serverį. ?onboard=1 – parodo vedlį.
     const [{ MemoryStore }, { MockAi }] = await Promise.all([import('./data/memoryStore'), import('./ai/mockAi')]);
     const onboarded = !new URLSearchParams(location.search).has('onboard');
-    const store = new MemoryStore(true, onboarded), ai = new MockAi();
-    Object.assign(window, { __store: store, __ai: ai }); // testams
-    await startApp({ store, ai, mock: true, anonymous: false, onLogout: () => location.reload(), onSaveAccount: () => {} });
+    const memory = new MemoryStore(true, onboarded), ai = new MockAi(), store = new OfflineStore(memory, 'mock');
+    Object.assign(window, { __store: memory, __sync: store, __ai: ai }); // testams
+    await startApp({ store, sync: store, ai, mock: true, anonymous: false, onLogout: () => location.reload(), onSaveAccount: () => {} });
     return;
   }
 
@@ -45,9 +46,10 @@ async function boot() {
     setTimeout(async () => {
       showBoot();
       try {
+        const store = new OfflineStore(new SupabaseStore(db, session.user.id), session.user.id);
         await startApp({
-          store: new SupabaseStore(db, session.user.id), ai: new SupabaseAi(db), mock: false, anonymous,
-          onLogout: async () => { await db.auth.signOut(); location.reload(); },
+          store, sync: store, ai: new SupabaseAi(db), mock: false, anonymous,
+          onLogout: async () => { await db.auth.signOut(); try { localStorage.removeItem('kd-cache-' + session.user.id); } catch { /* nesvarbu */ } location.reload(); },
           onSaveAccount: () => showAuth(db, 'upgrade', { onBack: () => { $('#authView').hidden = true; $('#appView').hidden = false; } }),
         });
       } catch (e) {

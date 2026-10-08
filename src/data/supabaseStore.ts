@@ -63,6 +63,7 @@ function rowToSettings(r: Row | null): Settings {
     onboarded: !!r.onboarded, lang: r.lang === 'en' ? 'en' : 'lt',
     activity: r.activity === 'low' || r.activity === 'mid' ? r.activity : 'light',
     pace: r.goal_pace == null ? DEFAULT_SETTINGS.pace : num(r.goal_pace),
+    goalWeight: r.goal_weight_kg == null ? null : num(r.goal_weight_kg),
   };
 }
 function rowToProduct(r: Row): Product {
@@ -73,12 +74,13 @@ export class SupabaseStore implements Store {
   constructor(private db: SupabaseClient, private userId: string) {}
 
   async loadInitial(from: string): Promise<InitialData> {
-    const [profile, products, meals, insight, days] = await Promise.all([
+    const [profile, products, meals, insight, days, weights] = await Promise.all([
       this.db.from('profiles').select('*').eq('id', this.userId).maybeSingle(),
       this.db.from('products').select('*').order('created_at'),
       this.db.from('saved_meals').select('id,name,created_at,saved_meal_items(position,name,amount,kcal,protein,carbs,fat)').order('created_at'),
       this.db.from('insights').select('text,period_days,created_at').order('created_at', { ascending: false }).limit(1).maybeSingle(),
       this.loadRange(from, '9999-12-31'),
+      this.db.from('weight_log').select('day,weight_kg').order('day').limit(2000),
     ]);
     const ins = check(insight) as Row | null;
     return {
@@ -91,6 +93,7 @@ export class SupabaseStore implements Store {
       })),
       insight: ins ? { text: ins.text, at: Date.parse(ins.created_at), n: num(ins.period_days) } : null,
       days,
+      weights: (check(weights) as Row[]).map((w) => ({ date: w.day, kg: num(w.weight_kg) })),
     };
   }
 
@@ -138,7 +141,7 @@ export class SupabaseStore implements Store {
     check(await this.db.from('profiles').update({
       kcal_goal: s.kcal, protein_goal: s.protein, weight_kg: s.weight, age: s.age, height_cm: s.height,
       sex: s.sex, add_burned: s.addBurned, accurate: s.accurate,
-      onboarded: s.onboarded, lang: s.lang, activity: s.activity, goal_pace: s.pace,
+      onboarded: s.onboarded, lang: s.lang, activity: s.activity, goal_pace: s.pace, goal_weight_kg: s.goalWeight,
     }).eq('id', this.userId));
   }
 
@@ -160,6 +163,11 @@ export class SupabaseStore implements Store {
   }
   async deleteMeal(id: string) {
     check(await this.db.from('saved_meals').delete().eq('id', id));
+  }
+
+  async setWeight(date: string, kg: number | null) {
+    if (kg == null) check(await this.db.from('weight_log').delete().eq('day', date));
+    else check(await this.db.from('weight_log').upsert({ user_id: this.userId, day: date, weight_kg: kg }, { onConflict: 'user_id,day' }));
   }
 
   async saveInsight(i: Insight) {

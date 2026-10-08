@@ -1,11 +1,12 @@
 // Programos karkasas: apatinė navigacija, ekranų perjungimas, vedlys.
 import type { AiClient } from '../ai/client';
 import type { Store } from '../data/store';
+import type { OfflineStore, SyncStatus } from '../data/offlineStore';
 import { onLangChange, setLang, t } from '../i18n';
 import { today } from '../lib/dates';
 import { esc } from '../lib/format';
 import type { Settings } from '../types';
-import { $ } from './dom';
+import { $, toast } from './dom';
 import { closeSheet } from './sheet';
 import { AppState, type Tab } from './state';
 import { openAdd } from './views/add';
@@ -16,6 +17,8 @@ import { bindToday, renderToday } from './views/today';
 
 export interface AppContext {
   store: Store;
+  /** Neprisijungus – įrašų eilė (jei naudojama). */
+  sync?: OfflineStore;
   ai: AiClient;
   mock: boolean;
   /** Naudojasi be registracijos (anoniminė paskyra). */
@@ -40,6 +43,7 @@ export async function startApp(ctx: AppContext) {
 
   function shell() {
     app.innerHTML = (ctx.mock ? '<div class="mockbar">' + esc(t('mockBar')) + '</div>' : '')
+      + '<div class="syncbar" id="syncBar" role="status" hidden></div>'
       + '<main class="view" id="viewToday"></main><main class="view" id="viewStats" hidden></main><main class="view" id="viewProfile" hidden></main>'
       + '<nav class="tabbar" aria-label="Navigacija">'
       + (['today', 'add', 'stats', 'profile'] as const).map((k) => '<button type="button" data-nav="' + k + '" class="' + (k === 'add' ? 'nav-add' : '') + '"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[k] + '</svg><span>' + esc(t(k === 'today' ? 'navToday' : k === 'add' ? 'navAdd' : k === 'stats' ? 'navStats' : 'navProfile')) + '</span></button>').join('')
@@ -76,7 +80,18 @@ export async function startApp(ctx: AppContext) {
     s.tab = k as Tab; s.changed();
   });
 
-  onLangChange(() => { closeSheet(); shell(); render(); });
+  onLangChange(() => { closeSheet(); shell(); render(); if (ctx.sync) showSync(ctx.sync.status()); });
+
+  // Ryšio juosta: rodoma, kai nėra ryšio arba laukia neišsiųstų įrašų
+  const showSync = (st: SyncStatus) => {
+    const bar = document.getElementById('syncBar'); if (!bar) return;
+    bar.hidden = !st.offline && !st.pending;
+    bar.textContent = st.offline ? (st.pending ? t('offlinePending', { n: st.pending }) : t('offlineBar')) : t('syncing', { n: st.pending });
+  };
+  if (ctx.sync) {
+    ctx.sync.onStatus(showSync);
+    ctx.sync.onRejected = () => { toast(t('saveFailed')); void s.reload(); };
+  }
 
   // Grįžus į programą: perjungiam „šiandien“, jei praėjo vidurnaktis, ir atnaujinam duomenis.
   let lastToday = today();
@@ -89,10 +104,11 @@ export async function startApp(ctx: AppContext) {
 
   const showApp = () => { $('#onboardView').hidden = true; $('#bootView').hidden = true; app.hidden = false; };
   shell();
+  if (ctx.sync) showSync(ctx.sync.status());
   if (!s.settings.onboarded) {
     $('#bootView').hidden = true; app.hidden = true;
     const ob = $('#onboardView'); ob.hidden = false;
-    runOnboarding(ob, s.settings, (ns: Settings) => { s.saveSettings(ns); showApp(); render(); window.scrollTo(0, 0); });
+    runOnboarding(ob, s.settings, (ns: Settings, kg: number) => { s.saveSettings(ns); if (!s.weights.length) s.setWeight(today(), kg); showApp(); render(); window.scrollTo(0, 0); });
   } else {
     showApp(); render();
   }

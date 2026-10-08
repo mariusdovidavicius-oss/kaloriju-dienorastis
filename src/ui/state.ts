@@ -4,7 +4,7 @@ import { emptyDay, type Store } from '../data/store';
 import { t, type Key } from '../i18n';
 import { slotByHour, totals } from '../lib/calc';
 import { addDays, today } from '../lib/dates';
-import type { Day, FoodItem, Insight, MealKey, Product, SavedMeal, Settings, Workout } from '../types';
+import type { Day, FoodItem, Insight, MealKey, Product, SavedMeal, Settings, WeightEntry, Workout } from '../types';
 import { toast } from './dom';
 
 const LOAD_DAYS = 120;
@@ -19,6 +19,7 @@ export class AppState {
   products: Product[] = [];
   meals: SavedMeal[] = [];
   insight: Insight | null = null;
+  weights: WeightEntry[] = [];
   view = today();
   tab: Tab = 'today';
   statsN = 7;
@@ -35,7 +36,7 @@ export class AppState {
   /* ---------- įkėlimas ir saugojimas ---------- */
   async load() {
     const data = await this.store.loadInitial(this.loadedFrom);
-    Object.assign(this, { days: data.days, settings: data.settings, products: data.products, meals: data.meals, insight: data.insight, loading: false });
+    Object.assign(this, { days: data.days, settings: data.settings, products: data.products, meals: data.meals, insight: data.insight, weights: data.weights, loading: false });
   }
   async reload() {
     try { await this.load(); this.changed(); } catch (e) { console.error(e); }
@@ -159,6 +160,19 @@ export class AppState {
     this.changed();
     void this.save(() => this.store.saveInsight(i));
   }
+
+  /** Svoris dienai (null – ištrinti). Naujausias svoris tampa profilio svoriu (BMR skaičiavimui). */
+  setWeight(date: string, kg: number | null) {
+    const before = this.weights.find((w) => w.date === date);
+    this.weights = this.weights.filter((w) => w.date !== date);
+    if (kg != null) this.weights = this.weights.concat([{ date, kg }]).sort((a, b) => (a.date < b.date ? -1 : 1));
+    void this.save(() => this.store.setWeight(date, kg));
+    const latest = this.weights.at(-1);
+    if (latest && latest.kg !== this.settings.weight) this.saveSettings({ ...this.settings, weight: latest.kg });
+    else this.changed();
+    if (kg == null && before) toast(t('weightDeleted'), { label: t('undo'), run: () => this.setWeight(date, before.kg) });
+  }
+  latestWeight(): WeightEntry | null { return this.weights.at(-1) ?? null; }
 
   /** Paskutiniai skirtingi valgyti produktai (naujausi pirmi). */
   recentFoods(limit = 12): FoodItem[] {

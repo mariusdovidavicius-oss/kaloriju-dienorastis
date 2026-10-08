@@ -17,7 +17,12 @@ export interface Settings {
   activity: Activity;
   /** Norimas tempas, kg per savaitę (0 – išlaikyti). */
   pace: number;
+  /** Tikslo svoris, kg (nebūtina). */
+  goalWeight: number | null;
 }
+
+/** Svorio įrašas (vienas per dieną). */
+export interface WeightEntry { date: string; kg: number }
 
 export type EntrySource = 'ai' | 'manual' | 'product' | 'meal' | 'calc' | 'import';
 
