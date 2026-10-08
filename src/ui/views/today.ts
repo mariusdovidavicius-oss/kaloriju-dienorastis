@@ -1,12 +1,13 @@
 // „Šiandien“: savaitės juosta, suvestinė su žiedu, valgių kortelės.
 import { countEntries, t } from '../../i18n';
-import { baseline, bmr, dayLimit, MEALS, mealKcal, mealLabel, mealOf, stepsKcal } from '../../lib/calc';
+import { baseline, bmr, dayLimit, MEALS, mealKcal, mealLabel, mealOf, stepsKcal, streak, waterBase, waterExpected, waterGoal } from '../../lib/calc';
 import { addDays, dstr, parseD, today } from '../../lib/dates';
-import { cap, esc, fmtDate, fmtWeekday, nf, nf1, newId } from '../../lib/format';
+import { cap, esc, fmtDate, fmtL, fmtWeekday, nf, nf1, newId } from '../../lib/format';
 import type { FoodItem, MealKey, Product, SavedMeal } from '../../types';
 import { toast } from '../dom';
 import type { AppState } from '../state';
 import { openAdd } from './add';
+import { openCopy } from './copy';
 import { openEdit, openEditSteps, openEditWorkout } from './edit';
 import { openWeight, weightCardHtml } from './weight';
 
@@ -44,7 +45,7 @@ export function renderToday(s: AppState, root: HTMLElement) {
       + '<span class="wd">' + esc(fmtWeekday(parseD(d))) + '</span><span class="dn num">' + parseD(d).getDate() + '</span><span class="dot' + (logged ? ' on' : '') + '"></span></button>';
   }
   h += '</div><button type="button" class="iconbtn" data-week="1" aria-label="' + esc(t('nextWeek')) + '"' + (addDays(ws, 7) > td ? ' disabled' : '') + '>›</button></div>'
-    + '<div class="daytitle"><h1>' + esc(title) + '</h1>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + (v !== td ? '<button type="button" class="chipbtn" data-day="' + td + '">' + esc(t('today')) + '</button>' : '') + '</div></header>';
+    + '<div class="daytitle"><h1>' + esc(title) + '</h1>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + (v !== td ? '<button type="button" class="chipbtn" data-day="' + td + '">' + esc(t('today')) + '</button>' : streakHtml(s)) + '</div></header>';
 
   // suvestinė
   h += '<section class="card summary" aria-label="' + esc(t('eaten')) + '">'
@@ -61,6 +62,7 @@ export function renderToday(s: AppState, root: HTMLElement) {
   if (g.addBurned && tt.burned) h += '<p class="hint">' + esc(t('burnedAdded')) + '</p>';
   h += '</section>';
   h += weightCardHtml(s);
+  h += waterCardHtml(s);
 
   // valgiai
   const food = s.day(v).items.slice().sort((a, b) => a.t - b.t);
@@ -72,7 +74,8 @@ export function renderToday(s: AppState, root: HTMLElement) {
       + '<button type="button" class="addbtn" data-add="' + key + '" aria-label="' + esc(t('addTo', { meal: mealLabel(key) })) + '">+</button></div>';
     if (its.length) {
       h += '<ul class="rows">' + its.map((it) => row(s, it)).join('') + '</ul>'
-        + '<button type="button" class="linkbtn small" data-save-meal="' + key + '">☆ ' + esc(t('saveMeal')) + '</button>';
+        + '<div class="mealacts"><button type="button" class="linkbtn small" data-save-meal="' + key + '">☆ ' + esc(t('saveMeal')) + '</button>'
+        + '<button type="button" class="linkbtn small" data-copy-meal="' + key + '">⧉ ' + esc(t('copyMeal')) + '</button></div>';
     }
     h += '</section>';
   }
@@ -90,8 +93,33 @@ export function renderToday(s: AppState, root: HTMLElement) {
   }
   h += '</section>';
   const total = food.length + ex.length;
+  if (food.length) h += '<button type="button" class="linkbtn small copyday" data-copy-day>⧉ ' + esc(t('copyDay')) + '</button>';
   h += '<p class="foot">' + (total ? esc(countEntries(total)) + ' · ' : '') + esc(t('foot')) + '</p>';
   root.innerHTML = h;
+}
+
+const FLAME = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c1 4-3 5.5-3 9.5A3 3 0 0 0 12 15a3 3 0 0 0 3-3c0-1-.4-2-1-2.8C17 10.5 19 13 19 15.5A7 7 0 0 1 5 15.5C5 10 11 7.5 12 2z"/></svg>';
+function streakHtml(s: AppState) {
+  const n = streak(s.days, today());
+  return n >= 2 ? '<div class="streak num" title="' + esc(t('streakHint')) + '">' + FLAME + esc(t('streakDays', { n })) + '</div>' : '';
+}
+
+/** Vandens kortelė: išgerta, tikslas (su sportu), mygtukai +250/+500. */
+function waterCardHtml(s: AppState) {
+  const v = s.view, d = s.day(v), ml = d.water || 0, goal = waterGoal(s.settings, d), extra = goal - waterBase(s.settings);
+  const pct = Math.min(100, ml / goal * 100);
+  let note = '';
+  if (ml >= goal) note = t('waterDone');
+  else if (v === today()) {
+    const now = new Date(), exp = waterExpected(goal, now.getHours() + now.getMinutes() / 60, s.settings.remindFrom, s.settings.remindTo);
+    if (exp - ml >= 250) note = t('waterBehind', { n: fmtL(exp) });
+  }
+  return '<section class="card watercard"><div class="meal-head"><div><h2>' + esc(t('water')) + ' <span class="wnow num">' + fmtL(ml) + ' l</span></h2>'
+    + '<span class="num">' + esc(extra > 0 ? t('waterSport', { m: fmtL(goal), n: fmtL(extra) }) : t('waterOf', { m: fmtL(goal) })) + '</span></div></div>'
+    + '<div class="bar waterbar" role="progressbar" aria-valuemin="0" aria-valuemax="' + goal + '" aria-valuenow="' + ml + '" aria-label="' + esc(t('water')) + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>'
+    + '<div class="waterbtns"><button type="button" class="btn" data-water="-250" aria-label="' + esc(t('waterRemove')) + '"' + (ml ? '' : ' disabled') + '>−</button>'
+    + '<button type="button" class="btn water" data-water="250">+ 250 ml</button><button type="button" class="btn water" data-water="500">+ 500 ml</button></div>'
+    + (note ? '<p class="hint num">' + esc(note) + '</p>' : '') + '</section>';
 }
 
 function row(s: AppState, it: FoodItem) {
@@ -141,6 +169,10 @@ export function bindToday(s: AppState, root: HTMLElement) {
     const item = el.closest<HTMLElement>('[data-item]'); if (item) { const it = s.day(s.view).items.find((i) => i.id === item.dataset.item); if (it) openEdit(s, it); return; }
     const w = el.closest<HTMLElement>('[data-wk]'); if (w) { const x = s.day(s.view).ex.find((i) => i.id === w.dataset.wk); if (x) openEditWorkout(s, x); return; }
     if (el.closest('[data-steps]')) { openEditSteps(s); return; }
+    const wt = el.closest<HTMLElement>('[data-water]'); if (wt) { s.addWater(+wt.dataset.water!); return; }
+    const cm = el.closest<HTMLElement>('[data-copy-meal]');
+    if (cm) { const k = cm.dataset.copyMeal as MealKey; openCopy(s, s.day(s.view).items.filter((i) => mealOf(i) === k), k); return; }
+    if (el.closest('[data-copy-day]')) { openCopy(s, s.day(s.view).items.slice().sort((a, b) => a.t - b.t)); return; }
     const sm = el.closest<HTMLElement>('[data-save-meal]'); if (sm) { saveMealPrompt(s, sm.dataset.saveMeal as MealKey, sm); return; }
   });
 }

@@ -39,11 +39,16 @@ src/
   lib/off.ts           Open Food Facts: prekė pagal brūkšninį kodą, paieška
   ui/scanner.ts        brūkšninio kodo skaitytuvas (BarcodeDetector arba ZXing)
   ui/views/weight.ts   svoris: kortelė, įrašymas, grafikas
+  ui/views/recipe.ts   receptai: kūrimas ir suvalgytos dalies įrašymas
+  ui/views/copy.ts     įrašo, valgio ar visos dienos kopijavimas į kitą dieną
+  lib/push.ts          telefono pranešimai (Web Push) ir service worker registracija
+public/sw.js           service worker: programa atsidaro be interneto, rodo priminimus
   ai/supabaseAi.ts     kviečia serverio funkciją `ai`
   ai/mockAi.ts         netikras AI testams
 supabase/
   migrations/          duomenų bazės schema (taikoma eilės tvarka)
   functions/ai/        serverio funkcija ir Claude nurodymai (prompts.ts)
+  functions/remind/    priminimų siuntimas (kviečia pg_cron kas 30 min.)
 tests/                 formulių testai (Vitest)
 e2e/                   naršyklės testai bandomajame režime (Playwright)
 scripts/import-artifact.mjs   senų Artifact duomenų perkėlimas
@@ -83,6 +88,33 @@ Kalba išsaugoma profilyje (`profiles.lang`). AI nurodymai lietuviški, bet angl
 ## Dienos tikslo pasiūlymas
 
 `BMR × judėjimas − tempas × 7700 / 7`, kur judėjimas: daugiausia sėdi 1,2, šiek tiek vaikšto 1,35, daug juda 1,5; tempas 0–0,75 kg per savaitę. Minimumas: 1 500 kcal vyrams, 1 200 kcal moterims. Baltymai: 1,6 g/kg.
+
+## Vanduo
+
+Tikslas: ~30 ml vienam kūno svorio kilogramui, suapvalinta iki 250 ml, ribos 1,5–3,5 l, ir dar +0,5 l už kiekvieną sporto valandą tą dieną. Profilyje galima įrašyti savo tikslą.
+„Iki dabar vertėtų būti išgėrus“ = tikslas tolygiai paskirstytas tarp priminimų valandų „nuo“ ir „iki“.
+
+## Receptai
+
+Receptas – tai dažnas valgis su porcijų skaičiumi (`saved_meals.servings`, nebūtinai `total_grams`). Įrašant pasirenkama porcijų dalis, ¼ / ⅓ / ½ / visas arba gramai; į dienoraštį įrašoma viena eilutė (`source = 'recipe'`).
+
+## Tikrasis sudeginimas (kalibravimas)
+
+Paskutinės 28 dienos (be šiandienos): `vidutiniškai suvalgyta − svorio pokytis per dieną × 7700`. Svorio pokytis – tiesinė regresija per svėrimus.
+Reikia ≥ 14 dienų su įrašais (dienos, kai suvalgyta mažiau nei pusė BMR, neįskaitomos), ≥ 3 svėrimų, apimančių ≥ 14 dienų. Siūlomas tikslas = sudeginimas − tempas × 7700 / 7 (jei sudegintos pridedamos prie limito – atimamas ir vidutinis sportas).
+
+## Priminimai (Web Push)
+
+1. Profilyje vartotojas įjungia priminimus ir „Įjungti pranešimus šiame telefone“ → prenumerata įrašoma į `push_subscriptions` (iPhone – tik kai programa pridėta į pagrindinį ekraną).
+2. `pg_cron` kas 30 min. kviečia funkciją `remind` (antraštė `x-cron-secret`).
+3. Funkcija vartotojo laiko juostoje sprendžia: vanduo – kas ~2 val., jei atsilieka ≥ 250 ml nuo plano; valgiai – 13–15 val., jei nieko neįrašyta, ir 20–22 val., jei nėra vakarienės. Išsiuntimai žymimi `private.reminder_log`.
+
+Slaptos reikšmės laikomos **Supabase Vault** (ne kode): `vapid_private_key`, `vapid_public_key`, `remind_cron_secret`. Viešas VAPID raktas – `VITE_VAPID_PUBLIC_KEY`.
+Patikrinti be siuntimo: `net.http_post(... body := '{"dry":true,"now":"2026-10-08T10:00:00Z"}')`.
+
+## Bandomasis režimas
+
+`npm run dev:mock` – duomenys atmintyje. `?onboard=1` – vedlys, `?demo=1` – 4 savaitės įrašų ir svėrimų (kalibravimui ir serijai pamatyti).
 
 ## Formulės
 

@@ -1,4 +1,4 @@
-import type { Day, FoodItem, Insight, Product, SavedMeal, Settings, WeightEntry, Workout } from '../types';
+import type { Day, FoodItem, Insight, Product, PushSub, SavedMeal, Settings, WeightEntry, Workout } from '../types';
 
 export interface InitialData {
   settings: Settings;
@@ -30,6 +30,8 @@ export interface Store {
 
   /** 0 – ištrina dienos žingsnius. */
   setSteps(date: string, steps: number): Promise<void>;
+  /** Išgerta per dieną, ml (0 – ištrina). */
+  setWater(date: string, ml: number): Promise<void>;
 
   saveSettings(s: Settings): Promise<void>;
 
@@ -43,8 +45,11 @@ export interface Store {
 
   /** null – ištrina tos dienos svorį. */
   setWeight(date: string, kg: number | null): Promise<void>;
+
+  /** Pranešimų prenumerata šiam įrenginiui; null – atsisakyti (pagal endpoint). */
+  setPush(sub: PushSub | null, endpoint: string): Promise<void>;
 }
 
 export function emptyDay(date: string): Day {
-  return { date, items: [], ex: [], steps: 0 };
+  return { date, items: [], ex: [], steps: 0, water: 0 };
 }

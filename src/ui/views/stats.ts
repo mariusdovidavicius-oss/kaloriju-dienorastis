@@ -1,6 +1,6 @@
 // „Statistika“: vidurkiai, balanso grafikas, daugiausiai kalorijų davę produktai, Claude pastebėjimai.
 import { t } from '../../i18n';
-import { baseline, bmr, dayLimit, dayStat, KCAL_PER_KG_FAT } from '../../lib/calc';
+import { baseline, bmr, calibrate, dayLimit, dayStat, KCAL_PER_KG_FAT } from '../../lib/calc';
 import { parseD, periodDays, today } from '../../lib/dates';
 import { esc, fmtStamp, fmtTime, fmtWeekday, nf, nf1 } from '../../lib/format';
 import { toast } from '../dom';
@@ -17,6 +17,7 @@ export function renderStats(s: AppState, root: HTMLElement) {
     + '<div class="seg small" role="group">' + [7, 30].map((k) => '<button type="button" data-n="' + k + '" aria-pressed="' + (n === k) + '">' + esc(t(k === 7 ? 'days7' : 'days30')) + '</button>').join('') + '</div></div></header>';
 
   h += weightChartHtml(s, n);
+  h += calibHtml(s);
 
   // šiandienos balansas
   const tt = s.totals(td), out = baseline(g) + tt.burned, net = tt.kcal - out;
@@ -78,6 +79,21 @@ export function renderStats(s: AppState, root: HTMLElement) {
   root.innerHTML = h;
 }
 
+/** Tikrasis sudeginimas pagal svorio pokytį ir suvalgytas kalorijas. */
+function calibHtml(s: AppState) {
+  const c = calibrate(s.days, s.weights, s.settings, today());
+  let h = '<section class="card calib"><h2>' + esc(t('calibTitle')) + '</h2>';
+  if (!c.ok) {
+    return h + '<p class="hint">' + esc(t('calibNeed')) + '</p><p class="hint num">' + esc(t('calibProgress', { d: c.loggedDays, w: c.weighIns, s: c.span })) + '</p></section>';
+  }
+  h += '<div class="tiles num">' + tile(t('calibTdee'), nf(c.tdee) + ' kcal') + tile(t('calibFormula'), nf(c.formula) + ' kcal')
+    + tile(t('calibIntake'), nf(c.intake) + ' kcal') + tile(t('calibRate'), (c.perWeek > 0 ? '+' : '') + nf1(c.perWeek) + ' kg', c.perWeek <= 0 ? 'def' : 'sur') + '</div>';
+  if (Math.abs(c.suggested - c.current) < 100) h += '<p class="status ok">' + esc(t('calibFine')) + '</p>';
+  else h += '<p class="num">' + esc(t('calibSuggest', { n: nf(c.suggested), cur: nf(c.current) })) + '</p><button type="button" class="btn main" data-calib="' + c.suggested + '">' + esc(t('calibApply', { n: nf(c.suggested) })) + '</button>';
+  if (c.clamped) h += '<p class="hint">' + esc(t('obMinWarn', { n: nf(c.suggested) })) + '</p>';
+  return h + '<p class="hint">' + esc(t('calibHint', { d: c.days })) + '</p></section>';
+}
+
 function tile(label: string, val: string, cls = '', sub = '') {
   return '<div class="tile"><span>' + esc(label) + '</span><b class="' + cls + '">' + esc(val) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</div>';
 }
@@ -98,6 +114,8 @@ export function bindStats(s: AppState, root: HTMLElement) {
     const el = e.target as HTMLElement;
     const nb = el.closest<HTMLElement>('[data-n]'); if (nb) { s.statsN = +nb.dataset.n!; s.changed(); return; }
     if (el.closest('[data-weight]')) { openWeight(s, today()); return; }
+    const cb = el.closest<HTMLElement>('[data-calib]');
+    if (cb) { const k = +cb.dataset.calib!; s.saveSettings({ ...s.settings, kcal: k }); toast(t('calibApplied', { n: nf(k) })); return; }
     const d = (e.target as Element).closest('[data-day]'); if (d) { s.tab = 'today'; s.goDay(d.getAttribute('data-day')!); return; }
     if (el.id === 'insightBtn' && !insightBusy) {
       const n = s.statsN, lines = insightLines(s, n);

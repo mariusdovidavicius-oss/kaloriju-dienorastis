@@ -9,3 +9,4 @@
 - Asmeninių duomenų (mitybos įrašų) į repozitoriją nekelti.
 - Programa dvikalbė (lietuvių ir anglų): naujus tekstus rašyti tik per `t('raktas')`, pridėti į abu `src/i18n/lt.ts` ir `src/i18n/en.ts`.
 - Mygtukai ≥ 44 px (testas tikrina ≥ 36 px 320 px ekrane); tikrinti iPhone SE (320 × 568) dydžiu.
+- Priminimai: funkcija `remind` (verify_jwt = false, tikrina `x-cron-secret` iš Vault). Slaptos reikšmės tik Vault, niekada ne repozitorijoje.

@@ -1,7 +1,7 @@
 // „Pridėti“ langas: Maistas (AI aprašymas, nuotrauka, Mano produktai, dažni, neseniai, rankinis),
 // Sportas (treniruotė, žingsniai) ir Skaičiuoklė (produktas, valgio planas, palyginimas, lengvesni produktai).
 import { lang, t } from '../../i18n';
-import { FOODS, norm, searchFoods, stem, type Food } from '../../data/foods';
+import { FOODS, foodAsProduct, norm, searchFoods, stem, type Food } from '../../data/foods';
 import { offByBarcode, offSearch } from '../../lib/off';
 import { cameraAvailable, startScanner, type Scanner } from '../scanner';
 import { dayLimit, gramsPer, isGramUnit, isMealPlan, MEALS, mealKcal, mealLabel, mealOf, pPer100kcal, stepsKcal, verdict, workoutKcal } from '../../lib/calc';
@@ -13,6 +13,7 @@ import { inp, maybe, toast } from '../dom';
 import { closeSheet, openSheet } from '../sheet';
 import { aiErr, type AppState } from '../state';
 import { applyProduct } from './today';
+import { recipeEntry, recipeKcal } from './recipe';
 
 type AddTab = 'food' | 'sport' | 'calc';
 interface CmpRow { id: string; name: string; unit: 'g' | 'ml'; per100: LookupResult['per100'] }
@@ -27,7 +28,7 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
     meal: opts.meal, tab: opts.tab, busy: false, file: null as File | null, mpSel: null as string | null,
     cbusy: false, cfile: null as File | null, cres: null as (LookupResult & { id: string }) | null, plan: null as PlanItem[] | null,
     cmp: loadCmp(), alt: null as AlternativesResult | null, altBusy: false,
-    q: '', extra: {} as Record<string, Product>, offResults: null as Product[] | null, offBusy: false,
+    q: '', extra: {} as Record<string, Product>, offResults: null as Product[] | null, offBusy: false, rcSel: null as string | null,
   };
   let scanner: Scanner | null = null;
   const sheet = openSheet(t('addTo', { meal: mealLabel(st.meal) }), { id: 'addSheet', onClose: () => scanner?.stop() });
@@ -83,12 +84,13 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
     const out = maybe('#results', root); if (!out) return;
     const q = st.q.trim();
     if (!q) {
-      const ps = s.products, ms = s.meals, v = s.view;
+      const ps = s.products, ms = s.savedMeals(), rs = s.recipes(), v = s.view;
       const yd = s.day(addDays(v, -1)).items.filter((i) => mealOf(i) === st.meal);
       const mine = s.day(v).items.filter((i) => mealOf(i) === st.meal);
       const recent = s.recentFoods(10);
       out.innerHTML = (recent.length ? '<h3>' + esc(t('recent')) + '</h3><div class="chips">' + recent.map((r, i) => '<button type="button" class="chipbtn" data-recent="' + i + '">' + esc(r.name) + '<small class="num">' + nf(r.kcal) + ' kcal</small></button>').join('') + '</div>' : '')
         + '<h3>' + esc(t('myProducts')) + '</h3><div class="chips">' + (ps.length ? ps.map((p) => '<button type="button" class="chipbtn' + (st.mpSel === p.id ? ' sel' : '') + '" data-mp="' + esc(p.id) + '">' + esc(p.name) + '<small class="num">' + nf(p.kcal) + '/' + esc(p.unit) + '</small></button>').join('') : '<span class="hint">' + esc(t('noProducts')) + '</span>') + '</div>'
+        + (rs.length ? '<h3>' + esc(t('recipes')) + '</h3><div class="chips">' + rs.map((r) => '<button type="button" class="chipbtn' + (st.rcSel === r.id ? ' sel' : '') + '" data-rc="' + esc(r.id) + '">' + esc(r.name) + '<small class="num">' + nf(recipeKcal(r) / (r.servings || 1)) + '/' + esc(t('portionsShort')) + '</small></button>').join('') + '</div>' : '')
         + '<h3>' + esc(t('frequentMeals')) + '</h3><div class="chips">'
         + (!mine.length && yd.length ? '<button type="button" class="chipbtn dashed" data-yday>' + esc(t('likeYesterday')) + '<small class="num">' + nf(mealKcal(yd)) + ' kcal</small></button>' : '')
         + (ms.length ? ms.map((m) => '<button type="button" class="chipbtn" data-ml="' + esc(m.id) + '">' + esc(m.name) + '<small class="num">' + nf(mealKcal(m.items)) + ' kcal</small></button>').join('') : (yd.length && !mine.length ? '' : '<span class="hint">' + esc(t('noMeals')) + '</span>'))
@@ -102,18 +104,16 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
     const row = (p: Product, src: string) => '<li><button type="button" class="row" data-mp="' + esc(p.id) + '"><span class="r-main"><span class="r-name">' + esc(p.name) + '</span><span class="r-sub num">'
       + (/^100 ?(g|ml)$/.test(p.unit) ? nf(p.kcal) + ' kcal / 100 g' : nf(p.kcal) + ' kcal / ' + esc(p.unit) + (p.grams ? ' (' + nf(p.grams) + ' g)' : ''))
       + ' · ' + esc(t('proteinShort', { n: nf1(p.protein) })) + '</span></span><span class="src">' + esc(src) + '</span></button></li>';
-    const list = mine.map((p) => row(p, t('srcMine'))).concat(base.map((p) => row(p, t('srcBase')))).concat((off || []).map((p) => row(p, t('srcOff'))));
+    const recs = s.recipes().filter((r) => nq.split(' ').map(stem).every((w) => norm(r.name).includes(w))).slice(0, 5);
+    const list = recs.map((r) => '<li><button type="button" class="row" data-rc="' + esc(r.id) + '"><span class="r-main"><span class="r-name">' + esc(r.name) + '</span><span class="r-sub num">' + nf(recipeKcal(r) / (r.servings || 1)) + ' kcal / ' + esc(t('portionsShort')) + '</span></span><span class="src">' + esc(t('editRecipe')) + '</span></button></li>')
+      .concat(mine.map((p) => row(p, t('srcMine')))).concat(base.map((p) => row(p, t('srcBase')))).concat((off || []).map((p) => row(p, t('srcOff'))));
     out.innerHTML = (list.length ? '<ul class="rows results">' + list.join('') + '</ul>' : '<p class="hint">' + esc(t('noResults')) + '</p>')
       + (base.length ? '<p class="hint">' + esc(t('baseNote')) + '</p>' : '')
       + (off ? '' : '<button type="button" class="btn" id="offSearch"' + (st.offBusy ? ' disabled' : '') + '>' + esc(st.offBusy ? t('searching') : t('offSearch')) + '</button>');
   }
 
   /** Bazės produktas → Mano produktų formatas (vienetui arba 100 g). */
-  function foodProduct(f: Food): Product {
-    const L = lang(), name = L === 'en' ? f.en : f.lt;
-    if (f.unit) { const k = f.unit.g / 100; return { id: f.id, name, unit: L === 'en' ? f.unit.en : f.unit.lt, grams: f.unit.g, kcal: r1(f.kcal * k), protein: r1(f.protein * k), carbs: r1(f.carbs * k), fat: r1(f.fat * k) }; }
-    return { id: f.id, name, unit: '100 g', grams: 100, kcal: f.kcal, protein: f.protein, carbs: f.carbs, fat: f.fat };
-  }
+  function foodProduct(f: Food): Product { return foodAsProduct(f, lang()); }
   function pick(id: string | null): Product | undefined {
     if (!id) return undefined;
     return s.products.find((p) => p.id === id) || st.extra[id] || (FOODS.find((f) => f.id === id) ? foodProduct(FOODS.find((f) => f.id === id)!) : undefined);
@@ -170,6 +170,17 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
   /* ---------- Mano produktai: kiekis ---------- */
   function renderQty() {
     const q = maybe('#mpQty', root); if (!q) return;
+    const rc = st.rcSel ? s.meals.find((m) => m.id === st.rcSel) : null;
+    if (rc) {
+      const serv = rc.servings || 1;
+      q.innerHTML = '<div class="qty"><div class="res-head"><b>' + esc(rc.name) + '</b><button type="button" class="iconbtn sm" id="mpCancel" aria-label="' + esc(t('cancel')) + '">×</button></div>'
+        + '<p class="hint num">' + esc(t('recipeWhole', { kcal: nf(recipeKcal(rc)), n: nf1(serv) })) + (rc.totalGrams ? ' · ' + nf(rc.totalGrams) + ' g' : '') + '</p>'
+        + '<div class="qty-row"><span class="stepper"><button type="button" data-rstep="-0.5" aria-label="−">−</button><input type="number" id="rcN" value="1" min="0.1" max="' + serv + '" step="0.25" aria-label="' + esc(t('quantity')) + '" inputmode="decimal"><button type="button" data-rstep="0.5" aria-label="+">+</button></span><span>' + esc(t('portionsShort')) + '</span>'
+        + (rc.totalGrams ? '<span>' + esc(t('orGrams')) + '</span><input type="number" class="gin" id="rcG" min="1" max="' + rc.totalGrams + '" inputmode="numeric" aria-label="g" value="' + Math.round(rc.totalGrams / serv) + '"><span>g</span>' : '') + '</div>'
+        + '<div class="qty-row"><span>' + esc(t('recipeShare')) + '</span><span class="fracs">' + [[0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [1, t('fracWhole')]].map(([f, l]) => '<button type="button" class="chipbtn" data-frac="' + f + '">' + esc(String(l)) + '</button>').join('') + '</span></div>'
+        + '<div class="qty-row"><span class="tot num" id="mpTot"></span><button type="button" class="btn main" id="rcAdd">' + esc(t('add')) + '</button></div></div>';
+      rcTot(); return;
+    }
     const sel = pick(st.mpSel);
     if (!sel) { q.innerHTML = ''; return; }
     const gp = gramsPer(sel), isMine = s.products.some((p) => p.id === sel.id);
@@ -182,6 +193,20 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
   function mpTot() {
     const sel = pick(st.mpSel), n = parseFloat(maybe<HTMLInputElement>('#mpN', root)?.value || '') || 0, el = maybe('#mpTot', root);
     if (sel && el) el.textContent = '= ' + nf(sel.kcal * n) + ' kcal, ' + t('proteinShort', { n: nf1((sel.protein || 0) * n) });
+  }
+
+  function rcPortions() { return parseFloat(maybe<HTMLInputElement>('#rcN', root)?.value || '') || 0; }
+  function rcTot() {
+    const rc = s.meals.find((m) => m.id === st.rcSel), el = maybe('#mpTot', root); if (!rc || !el) return;
+    const e = recipeEntry(rc, rcPortions(), st.meal);
+    el.textContent = '= ' + nf(e.kcal) + ' kcal, ' + t('proteinShort', { n: nf1(e.protein) });
+  }
+  function setPortions(n: number) {
+    const rc = s.meals.find((m) => m.id === st.rcSel); if (!rc) return;
+    const serv = rc.servings || 1, v = Math.round(Math.max(0.1, Math.min(serv, n)) * 100) / 100;
+    inp('#rcN', root).value = String(v);
+    const g = maybe<HTMLInputElement>('#rcG', root); if (g && rc.totalGrams) g.value = String(Math.round(rc.totalGrams * v / serv));
+    rcTot();
   }
 
   /* ---------- skaičiuoklė ---------- */
@@ -256,11 +281,27 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
     if (el.closest('[data-clear-cphoto]')) { st.cfile = null; render(); return; }
     const mp = el.closest<HTMLElement>('[data-mp]');
     if (mp) {
-      st.mpSel = st.mpSel === mp.dataset.mp ? null : mp.dataset.mp!;
+      st.mpSel = st.mpSel === mp.dataset.mp ? null : mp.dataset.mp!; st.rcSel = null;
+      root.querySelectorAll('[data-rc]').forEach((b) => b.classList.remove('sel'));
       root.querySelectorAll('[data-mp]').forEach((b) => b.classList.toggle('sel', (b as HTMLElement).dataset.mp === st.mpSel));
       renderQty(); maybe('#mpQty', root)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return;
     }
-    if (el.id === 'mpCancel') { st.mpSel = null; renderQty(); renderResults(); return; }
+    if (el.id === 'mpCancel') { st.mpSel = null; st.rcSel = null; renderQty(); renderResults(); return; }
+    const rcb = el.closest<HTMLElement>('[data-rc]');
+    if (rcb) {
+      st.rcSel = st.rcSel === rcb.dataset.rc ? null : rcb.dataset.rc!; st.mpSel = null;
+      root.querySelectorAll('[data-rc]').forEach((b) => b.classList.toggle('sel', (b as HTMLElement).dataset.rc === st.rcSel));
+      root.querySelectorAll('[data-mp]').forEach((b) => b.classList.remove('sel'));
+      renderQty(); maybe('#mpQty', root)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return;
+    }
+    const rs = el.closest<HTMLElement>('[data-rstep]'); if (rs) { setPortions(rcPortions() + +rs.dataset.rstep!); return; }
+    const fr = el.closest<HTMLElement>('[data-frac]');
+    if (fr) { const rc = s.meals.find((m) => m.id === st.rcSel); if (rc) setPortions((rc.servings || 1) * +fr.dataset.frac!); return; }
+    if (el.id === 'rcAdd') {
+      const rc = s.meals.find((m) => m.id === st.rcSel), n = rcPortions(); if (!rc || !(n > 0)) return;
+      const g = maybe<HTMLInputElement>('#rcG', root), e = recipeEntry(rc, n, st.meal, g ? Math.round(parseFloat(g.value)) || null : null);
+      s.addFood([e]); done(t('addedTo', { what: rc.name, kcal: nf(e.kcal), meal: mealLabel(st.meal) })); return;
+    }
     if (el.id === 'toMine') {
       const sel = pick(st.mpSel); if (!sel) return;
       const p: Product = { ...sel, id: newId() };
@@ -327,6 +368,8 @@ export function openAdd(s: AppState, opts: { meal: MealKey; tab: AddTab }) {
     if (el.id === 'q') { st.q = el.value; st.offResults = null; renderResults(); return; }
     if (el.id === 'mpN') { const g = maybe<HTMLInputElement>('#mpG', root); if (gp && g) g.value = String(Math.round((parseFloat(el.value) || 0) * gp)); mpTot(); }
     if (el.id === 'mpG' && gp) { inp('#mpN', root).value = String(Math.round((parseFloat(el.value) || 0) / gp * 100) / 100); mpTot(); }
+    if (el.id === 'rcN') { const rc = s.meals.find((m) => m.id === st.rcSel), g = maybe<HTMLInputElement>('#rcG', root); if (rc && g && rc.totalGrams) g.value = String(Math.round(rc.totalGrams * (parseFloat(el.value) || 0) / (rc.servings || 1))); rcTot(); }
+    if (el.id === 'rcG') { const rc = s.meals.find((m) => m.id === st.rcSel); if (rc?.totalGrams) { inp('#rcN', root).value = String(Math.round((parseFloat(el.value) || 0) / rc.totalGrams * (rc.servings || 1) * 100) / 100); rcTot(); } }
     if (el.id === 'calcG' && st.cres) { const g = Math.round(parseFloat(el.value)); if (g > 0 && g <= 5000) { st.cres.grams = g; updatePortion(); } }
   });
 

@@ -19,12 +19,22 @@ export interface Settings {
   pace: number;
   /** Tikslo svoris, kg (nebūtina). */
   goalWeight: number | null;
+  /** Vandens tikslas, ml (null – automatiškai pagal svorį). */
+  waterGoal: number | null;
+  /** Priminimai (telefono pranešimai). */
+  remindWater: boolean;
+  remindMeals: boolean;
+  /** Priminimų laikas: nuo–iki valandos. */
+  remindFrom: number;
+  remindTo: number;
+  /** Laiko juosta priminimams, pvz. Europe/Vilnius. */
+  tz: string;
 }
 
 /** Svorio įrašas (vienas per dieną). */
 export interface WeightEntry { date: string; kg: number }
 
-export type EntrySource = 'ai' | 'manual' | 'product' | 'meal' | 'calc' | 'import';
+export type EntrySource = 'ai' | 'manual' | 'product' | 'meal' | 'calc' | 'import' | 'recipe';
 
 /** Maisto įrašas dienoraštyje. */
 export interface FoodItem {
@@ -60,6 +70,8 @@ export interface Day {
   items: FoodItem[];
   ex: Workout[];
   steps: number;
+  /** Išgerta vandens, ml. */
+  water: number;
 }
 
 export interface Product {
@@ -86,7 +98,14 @@ export interface SavedMeal {
   id: string;
   name: string;
   items: MealItem[];
+  /** Receptas: kiek porcijų išeina iš viso (null – įprastas dažnas valgis). */
+  servings?: number | null;
+  /** Receptas: pagaminto patiekalo svoris, g (nebūtina). */
+  totalGrams?: number | null;
 }
+
+/** Telefono pranešimų prenumerata (Web Push). */
+export interface PushSub { endpoint: string; p256dh: string; auth: string }
 
 export interface Insight {
   text: string;

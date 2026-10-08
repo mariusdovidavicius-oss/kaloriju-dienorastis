@@ -1,10 +1,10 @@
 // Veikimas be interneto: įrašymai dedami į eilę telefone (localStorage) ir išsiunčiami, kai atsiranda ryšys.
 // Paskutiniai įkelti duomenys saugomi kaip kopija, kad programa atsidarytų ir be ryšio.
-import type { Day, FoodItem, Insight, Product, SavedMeal, Settings, Workout } from '../types';
+import type { Day, FoodItem, Insight, Product, PushSub, SavedMeal, Settings, Workout } from '../types';
 import { emptyDay, type InitialData, type Store } from './store';
 
 type Method = 'addFood' | 'updateFood' | 'deleteFood' | 'addWorkout' | 'updateWorkout' | 'deleteWorkout' | 'setSteps'
-  | 'saveSettings' | 'addProduct' | 'deleteProduct' | 'addMeal' | 'deleteMeal' | 'saveInsight' | 'setWeight';
+  | 'saveSettings' | 'addProduct' | 'deleteProduct' | 'addMeal' | 'deleteMeal' | 'saveInsight' | 'setWeight' | 'setWater' | 'setPush';
 interface Op { m: Method; a: unknown[] }
 
 export interface SyncStatus { offline: boolean; pending: number }
@@ -31,6 +31,8 @@ export function applyOp(d: InitialData, op: Op): void {
     case 'updateWorkout': { const [id, patch] = a as [string, Partial<Workout>]; eachDay((x) => { x.ex = x.ex.map((i) => (i.id === id ? { ...i, ...patch } : i)); }); break; }
     case 'deleteWorkout': { const [id] = a as [string]; eachDay((x) => { x.ex = x.ex.filter((i) => i.id !== id); }); break; }
     case 'setSteps': { const [date, n] = a as [string, number]; day(date).steps = n; break; }
+    case 'setWater': { const [date, n] = a as [string, number]; day(date).water = n; break; }
+    case 'setPush': break;
     case 'saveSettings': { d.settings = clone((a as [Settings])[0]); break; }
     case 'addProduct': { const p = (a as [Product])[0]; d.products = d.products.filter((x) => x.id !== p.id).concat([p]); break; }
     case 'deleteProduct': { const id = (a as [string])[0]; d.products = d.products.filter((x) => x.id !== id); break; }
@@ -144,4 +146,6 @@ export class OfflineStore implements Store {
   deleteMeal(id: string) { return this.enqueue('deleteMeal', [id]); }
   saveInsight(i: Insight) { return this.enqueue('saveInsight', [i]); }
   setWeight(date: string, kg: number | null) { return this.enqueue('setWeight', [date, kg]); }
+  setWater(date: string, ml: number) { return this.enqueue('setWater', [date, ml]); }
+  setPush(sub: PushSub | null, endpoint: string) { return this.enqueue('setPush', [sub, endpoint]); }
 }

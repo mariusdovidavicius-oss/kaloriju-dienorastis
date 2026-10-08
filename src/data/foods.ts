@@ -1,3 +1,4 @@
+import type { Product } from '../types';
 // Bendra produktų bazė: dažniausi produktai Lietuvoje, vertės 100 g (gėrimams – 100 ml).
 // Vertės apytikslės, pagal įprastas maistinės vertės lenteles (paruošti produktai – jei nurodyta „virti“, „kepti“).
 // Formatas: [lietuviškai, angliškai, kcal, baltymai, angliavandeniai, riebalai, vienetas LT?, vienetas EN?, vieneto g?]
@@ -243,4 +244,11 @@ export function searchFoods(q: string, limit = 20): Food[] {
   // Pirmiau – prasidedantys užklausa, tada – pagal sąrašo tvarką (dažnesni produktai sąraše aukščiau)
   const score = (x: typeof INDEX[number]) => (x.key.startsWith(first) ? 0 : x.key.includes(' ' + first) ? 1 : 2) * 1000 + x.i;
   return hits.sort((a, b) => score(a) - score(b)).slice(0, limit).map((x) => x.f);
+}
+
+/** Bazės produktas → Mano produktų formatas (vienetui, jei jis yra, kitaip 100 g). */
+export function foodAsProduct(f: Food, L: 'lt' | 'en'): Product {
+  const name = L === 'en' ? f.en : f.lt, r1 = (x: number) => Math.round(x * 10) / 10;
+  if (f.unit) { const k = f.unit.g / 100; return { id: f.id, name, unit: L === 'en' ? f.unit.en : f.unit.lt, grams: f.unit.g, kcal: r1(f.kcal * k), protein: r1(f.protein * k), carbs: r1(f.carbs * k), fat: r1(f.fat * k) }; }
+  return { id: f.id, name, unit: '100 g', grams: 100, kcal: f.kcal, protein: f.protein, carbs: f.carbs, fat: f.fat };
 }

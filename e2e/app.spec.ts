@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 // Testai veikia bandomajame režime (duomenys atmintyje, netikras AI) – tikri duomenys neliečiami.
 type Item = { name: string; kcal: number; meal: string };
 type W = {
-  __store: { offline: boolean; calls: string[]; days: Record<string, { items: Item[]; steps: number; ex: unknown[] }>; products: { name: string }[]; meals: { name: string }[]; settings: { kcal: number; protein: number; onboarded: boolean; lang: string } };
+  __store: { offline: boolean; calls: string[]; days: Record<string, { items: (Item & { amount: string; source?: string })[]; steps: number; water: number; ex: unknown[] }>; products: { name: string }[]; meals: { name: string; servings?: number | null; totalGrams?: number | null; items: unknown[] }[]; settings: { kcal: number; protein: number; onboarded: boolean; lang: string; remindWater: boolean; remindMeals: boolean; waterGoal: number | null; remindFrom: number } };
   __ai: { calls: { task: string; text: string; image: boolean }[] };
 };
 const store = (page: Page) => page.evaluate(() => (window as unknown as W).__store);
@@ -115,7 +115,7 @@ test.describe('pagrindinis', () => {
     await page.locator('.addbtn[data-add="vakariene"]').click();
     await sheet(page).locator('[data-ml]', { hasText: 'Mano pietūs' }).click();
     await expect(page.locator('.ring-num')).toHaveText(/1\s?340/);
-    expect((await store(page)).meals.map((m) => m.name)).toEqual(['Mano pietūs']);
+    expect((await store(page)).meals.filter((m) => m.servings == null).map((m) => m.name)).toEqual(['Mano pietūs']);
   });
 
   test('neseniai valgyta – vienu paspaudimu', async ({ page }) => {
@@ -317,4 +317,122 @@ test('vedlys: neteisingi skaičiai neleidžia tęsti', async ({ page }) => {
   await page.locator('#obAge').fill('5');
   await page.locator('button[type=submit]').click();
   await expect(page.locator('#obErr')).toHaveText('Patikrink skaičius.');
+});
+
+test.describe('3 etapas', () => {
+  test.beforeEach(async ({ page }) => { await open(page); await expect(page.locator('#viewToday')).toBeVisible(); });
+  const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); const z = (n: number) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); };
+
+  test('vanduo: +250, +500, atimti; tikslas pagal svorį', async ({ page }) => {
+    const card = page.locator('.watercard');
+    await expect(card).toContainText('iš 2,75 l'); // 94 kg × 30 ml = 2 820 → 2 750
+    await card.getByRole('button', { name: '+ 250 ml' }).click();
+    await card.getByRole('button', { name: '+ 500 ml' }).click();
+    await card.getByRole('button', { name: 'Atimti 250 ml' }).click();
+    await expect(card.locator('.wnow')).toHaveText('0,5 l');
+    await expect.poll(async () => (await store(page)).days[today()].water).toBe(500);
+  });
+
+  test('vanduo: sportas padidina tikslą', async ({ page }) => {
+    await page.locator('[data-day="' + yesterday() + '"]').first().click();
+    await expect(page.locator('.watercard')).toContainText('su sportu +0,25 l'); // 40 min → 333 ml → 250
+  });
+
+  test('kopijuoti visą valgį iš vakar į šiandien', async ({ page }) => {
+    await page.locator('[data-day="' + yesterday() + '"]').first().click();
+    await page.locator('[data-copy-meal="pusryciai"]').click();
+    await sheet(page).getByRole('button', { name: 'Šiandien' }).click();
+    await sheet(page).locator('#copyForm button[type=submit]').click();
+    await expect(page.locator('#toast')).toContainText('Nukopijuota į šiandien: 1 įrašas');
+    const s = await store(page);
+    expect(s.days[today()].items.map((i) => [i.name, i.meal])).toEqual([['Avižinė košė', 'pusryciai']]);
+  });
+
+  test('kopijuoti įrašą į kitą valgį ir visą dieną', async ({ page }) => {
+    await page.locator('[data-day="' + yesterday() + '"]').first().click();
+    await page.locator('[data-item]').first().click();
+    await sheet(page).getByRole('button', { name: 'Kopijuoti į…' }).click();
+    await sheet(page).locator('#cpMeal').selectOption('uzkandis');
+    await sheet(page).locator('#copyForm button[type=submit]').click();
+    await page.locator('[data-copy-day]').click();
+    await sheet(page).locator('#copyForm button[type=submit]').click();
+    const items = (await store(page)).days[today()].items.map((i) => i.meal + ':' + i.name).sort();
+    expect(items).toEqual(['pietus:Vištienos krūtinėlė', 'pusryciai:Avižinė košė', 'uzkandis:Avižinė košė']);
+  });
+
+  test('receptas: ⅓ puodo įrašoma kaip viena eilutė', async ({ page }) => {
+    await page.locator('.addbtn[data-add="pietus"]').click();
+    await sheet(page).locator('[data-rc]', { hasText: 'Lęšių sriuba' }).click();
+    await expect(sheet(page)).toContainText('Visas: 1 510 kcal · 6 porc.');
+    await sheet(page).locator('[data-frac="0.3333333333333333"]').click();
+    await expect(sheet(page).locator('#rcN')).toHaveValue('2');
+    await expect(sheet(page).locator('#rcG')).toHaveValue('800');
+    await sheet(page).locator('#rcAdd').click();
+    const it = (await store(page)).days[today()].items[0];
+    expect([it.name, it.kcal, it.amount, it.source, it.meal]).toEqual(['Lęšių sriuba', 503, '2 porc. iš 6 · 800 g', 'recipe', 'pietus']);
+  });
+
+  test('receptas: gramais ir paieškoje', async ({ page }) => {
+    await page.locator('.addbtn[data-add="vakariene"]').click();
+    await sheet(page).locator('#q').fill('lesiu');
+    await sheet(page).locator('.results [data-rc]').click();
+    await sheet(page).locator('#rcG').fill('300');
+    await expect(sheet(page).locator('#rcN')).toHaveValue('0.75');
+    await sheet(page).locator('#rcAdd').click();
+    expect((await store(page)).days[today()].items[0].kcal).toBe(189);
+  });
+
+  test('receptas: sukurti Profilyje iš bazės produktų', async ({ page }) => {
+    await page.locator('[data-nav="profile"]').click();
+    await page.locator('#newRecipe').click();
+    await sheet(page).locator('#rcName').fill('Vištienos troškinys');
+    await sheet(page).locator('#rcServ').fill('2');
+    await sheet(page).locator('#rq').fill('vistienos krutinele');
+    await sheet(page).locator('[data-rc-pick]').first().click();
+    await sheet(page).locator('#riG').fill('400');
+    await sheet(page).locator('#riAdd').click();
+    await sheet(page).locator('details.manual summary').click();
+    await sheet(page).locator('#rmName').fill('Padažas');
+    await sheet(page).locator('#rmKcal').fill('120');
+    await sheet(page).locator('#rcMan button[type=submit]').click();
+    await expect(sheet(page).locator('#rcItems')).toContainText('Padažas');
+    await sheet(page).locator('#rcSave').click();
+    await expect(page.locator('#toast')).toContainText('Receptas „Vištienos troškinys“ išsaugotas');
+    const r = (await store(page)).meals.find((m) => m.name === 'Vištienos troškinys')!;
+    expect([r.servings, r.items.length]).toEqual([2, 2]);
+    await expect(page.locator('[data-edit-recipe]', { hasText: 'Vištienos troškinys' })).toBeVisible();
+  });
+
+  test('priminimai išsaugomi; bandomajame režime pranešimai neveikia', async ({ page }) => {
+    await page.locator('[data-nav="profile"]').click();
+    await page.locator('#rWater').check();
+    await page.locator('#rFrom').selectOption('8');
+    await page.locator('#wGoal').fill('2500');
+    await page.locator('#remForm button[type=submit]').click();
+    await expect.poll(async () => { const s = (await store(page)).settings; return [s.remindWater, s.remindMeals, s.remindFrom, s.waterGoal]; }).toEqual([true, false, 8, 2500]);
+    await page.locator('#pushOn').click();
+    await expect(page.locator('#toast')).toContainText('Bandomajame režime');
+    await page.locator('[data-nav="today"]').click();
+    await expect(page.locator('.watercard')).toContainText('iš 2,5 l');
+  });
+});
+
+test('kalibravimas pagal svorį ir serija (demo duomenys)', async ({ page }) => {
+  await open(page, '?demo=1');
+  await expect(page.locator('.streak')).toHaveText('28 d. iš eilės');
+  await page.locator('[data-nav="stats"]').click();
+  const card = page.locator('.calib');
+  await expect(card).toContainText('Sudegini per dieną');
+  const btn = card.locator('[data-calib]');
+  const k = Number(await btn.getAttribute('data-calib'));
+  expect(k).toBeGreaterThan(1900);
+  await btn.click();
+  await expect.poll(async () => (await store(page)).settings.kcal).toBe(k);
+  await expect(card).toContainText('Dabartinis tikslas tinka');
+});
+
+test('kalibravimas: kol trūksta duomenų, rodoma kiek dar reikia', async ({ page }) => {
+  await open(page);
+  await page.locator('[data-nav="stats"]').click();
+  await expect(page.locator('.calib')).toContainText('Dabar: 0 d. su įrašais, 4 svėrimai per 18 d.');
 });

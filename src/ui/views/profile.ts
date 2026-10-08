@@ -1,9 +1,11 @@
 // „Profilis“: tikslai, kalba, Mano produktai, dažni valgiai, paskyra.
 import { LANGS, lang, setLang, t, type Lang } from '../../i18n';
-import { suggestGoal } from '../../lib/calc';
+import { mealKcal, suggestGoal, waterBase } from '../../lib/calc';
+import { currentPush, disablePush, enablePush, isIos, isStandalone, pushSupported } from '../../lib/push';
 import { esc, newId, nf, nf1, r1 } from '../../lib/format';
 import type { Activity, Product, Settings } from '../../types';
-import { inp, toast } from '../dom';
+import { inp, maybe, toast } from '../dom';
+import { openRecipe } from './recipe';
 import type { AppState } from '../state';
 
 export interface ProfileCtx { anonymous: boolean; mock: boolean; onLogout: () => void; onSaveAccount: () => void }
@@ -27,6 +29,25 @@ export function renderProfile(s: AppState, root: HTMLElement, ctx: ProfileCtx) {
     + '<label class="check span2"><input type="checkbox" id="gAcc"' + (g.accurate ? ' checked' : '') + '>' + esc(t('accurate')) + '</label>'
     + '<button type="submit" class="btn main span2">' + esc(t('save')) + '</button></form></section>';
 
+  // vanduo ir priminimai
+  const hours = (from: number, to: number, sel: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i).map((x) => '<option value="' + x + '"' + (x === sel ? ' selected' : '') + '>' + String(x).padStart(2, '0') + ':00</option>').join('');
+  h += '<section class="card"><h2>' + esc(t('waterReminders')) + '</h2><form class="grid2" id="remForm" autocomplete="off">'
+    + '<label class="span2">' + esc(t('waterGoalLabel')) + '<input type="number" id="wGoal" min="500" max="8000" step="250" inputmode="numeric" placeholder="' + esc(t('waterAutoPh', { n: nf(waterBase({ ...g, waterGoal: null })) })) + '" value="' + (g.waterGoal ?? '') + '"></label>'
+    + '<p class="hint span2">' + esc(t('waterHint')) + '</p>'
+    + '<label class="check span2"><input type="checkbox" id="rWater"' + (g.remindWater ? ' checked' : '') + '>' + esc(t('remindWater')) + '</label>'
+    + '<label class="check span2"><input type="checkbox" id="rMeals"' + (g.remindMeals ? ' checked' : '') + '>' + esc(t('remindMeals')) + '</label>'
+    + '<label>' + esc(t('remindFrom')) + '<select id="rFrom">' + hours(5, 14, g.remindFrom) + '</select></label>'
+    + '<label>' + esc(t('remindTo')) + '<select id="rTo">' + hours(15, 24, g.remindTo) + '</select></label>'
+    + '<p class="hint span2">' + esc(t('remindHint')) + '</p>'
+    + '<div class="span2" id="pushBox"></div>'
+    + '<button type="submit" class="btn main span2">' + esc(t('save')) + '</button></form></section>';
+
+  // receptai
+  const rs = s.recipes();
+  h += '<section class="card"><h2>' + esc(t('recipes')) + '</h2>'
+    + (rs.length ? '<ul class="plist">' + rs.map((r) => '<li><button type="button" class="linkbtn" data-edit-recipe="' + esc(r.id) + '">' + esc(r.name) + ' <small class="num">· ' + nf1(r.servings || 1) + ' ' + esc(t('portionsShort')) + ', ' + nf(mealKcal(r.items) / (r.servings || 1)) + ' kcal/' + esc(t('portionsShort')) + '</small></button><button type="button" class="iconbtn sm" data-del-meal="' + esc(r.id) + '" aria-label="' + esc(t('deleteRecipe')) + '">×</button></li>').join('') + '</ul>' : '<p class="hint">' + esc(t('recipesNone')) + '</p>')
+    + '<button type="button" class="btn" id="newRecipe">' + esc(t('newRecipe')) + '</button><p class="hint">' + esc(t('recipeHint')) + '</p></section>';
+
   h += '<section class="card"><h2>' + esc(t('language')) + '</h2><div class="seg" role="group">'
     + LANGS.map((l) => '<button type="button" data-lang="' + l.code + '" aria-pressed="' + (lang() === l.code) + '">' + esc(l.label) + '</button>').join('') + '</div></section>';
 
@@ -40,14 +61,32 @@ export function renderProfile(s: AppState, root: HTMLElement, ctx: ProfileCtx) {
     + '<input type="number" id="pProt" min="0" step="0.1" placeholder="' + esc(t('proteinPerUnitPh')) + '" aria-label="' + esc(t('proteinPerUnitPh')) + '" inputmode="decimal">'
     + '<button type="submit" class="btn span2">' + esc(t('addProduct')) + '</button></form><p class="hint">' + esc(t('productHint')) + '</p></section>';
 
-  if (s.meals.length) h += '<section class="card"><h2>' + esc(t('frequentMeals')) + '</h2><ul class="plist">'
-    + s.meals.map((m) => '<li><span>' + esc(m.name) + ' <small class="num">· ' + m.items.map((i) => esc(i.name)).join(', ') + ' = ' + nf(m.items.reduce((a, i) => a + i.kcal, 0)) + ' kcal</small></span><button type="button" class="iconbtn sm" data-del-meal="' + esc(m.id) + '" aria-label="' + esc(t('deleteMeal')) + '">×</button></li>').join('')
+  const ms = s.savedMeals();
+  if (ms.length) h += '<section class="card"><h2>' + esc(t('frequentMeals')) + '</h2><ul class="plist">'
+    + ms.map((m) => '<li><span>' + esc(m.name) + ' <small class="num">· ' + m.items.map((i) => esc(i.name)).join(', ') + ' = ' + nf(m.items.reduce((a, i) => a + i.kcal, 0)) + ' kcal</small></span><button type="button" class="iconbtn sm" data-del-meal="' + esc(m.id) + '" aria-label="' + esc(t('deleteMeal')) + '">×</button></li>').join('')
     + '</ul></section>';
 
   if (!ctx.mock) h += '<section class="card"><h2>' + esc(t('account')) + '</h2>'
     + (ctx.anonymous ? '<p class="hint">' + esc(t('anonInfo')) + '</p><button type="button" class="btn main" id="saveAcct">' + esc(t('saveAccount')) + '</button>' : '<button type="button" class="btn" id="logout">' + esc(t('logout')) + '</button>')
     + '</section>';
   root.innerHTML = h;
+  void renderPush(root, ctx);
+}
+
+/** Pranešimų būsena šiame įrenginyje. */
+async function renderPush(root: HTMLElement, ctx: ProfileCtx) {
+  const box = maybe('#pushBox', root); if (!box) return;
+  let html: string;
+  if (ctx.mock) html = '<button type="button" class="btn" id="pushOn">' + esc(t('pushEnable')) + '</button>';
+  else if (isIos() && !isStandalone()) html = '<p class="hint">' + esc(t('pushIos')) + '</p>';
+  else if (!pushSupported()) html = '<p class="hint">' + esc(t('pushUnsupported')) + '</p>';
+  else if (Notification.permission === 'denied') html = '<p class="hint">' + esc(t('pushDenied')) + '</p>';
+  else {
+    const sub = await currentPush();
+    html = sub ? '<p class="status ok">' + esc(t('pushOn')) + '</p><button type="button" class="btn" id="pushOff">' + esc(t('pushDisable')) + '</button>'
+      : '<button type="button" class="btn" id="pushOn">' + esc(t('pushEnable')) + '</button>';
+  }
+  box.innerHTML = html;
 }
 
 export function bindProfile(s: AppState, root: HTMLElement, ctx: ProfileCtx) {
@@ -80,6 +119,17 @@ export function bindProfile(s: AppState, root: HTMLElement, ctx: ProfileCtx) {
     const dp = el.closest<HTMLElement>('[data-del-prod]'); if (dp) { s.deleteProduct(dp.dataset.delProd!); return; }
     const dm = el.closest<HTMLElement>('[data-del-meal]'); if (dm) { s.deleteMeal(dm.dataset.delMeal!); return; }
     if (el.id === 'saveAcct') { ctx.onSaveAccount(); return; }
+    if (el.id === 'newRecipe') { openRecipe(s, null); return; }
+    const er = el.closest<HTMLElement>('[data-edit-recipe]'); if (er) { const r = s.meals.find((m) => m.id === er.dataset.editRecipe); if (r) openRecipe(s, r); return; }
+    if (el.id === 'pushOn') {
+      if (ctx.mock) { toast(t('pushMock')); return; }
+      (el as HTMLButtonElement).disabled = true;
+      enablePush(s.store).then(() => toast(t('pushOn')))
+        .catch((e) => toast(t(e?.code === 'denied' ? 'pushDenied' : e?.code === 'unsupported' ? 'pushUnsupported' : 'pushFailed')))
+        .finally(() => void renderPush(root, ctx));
+      return;
+    }
+    if (el.id === 'pushOff') { void disablePush(s.store).finally(() => void renderPush(root, ctx)); return; }
     if (el.id === 'logout') ctx.onLogout();
   });
   root.addEventListener('submit', (e) => {
@@ -90,6 +140,17 @@ export function bindProfile(s: AppState, root: HTMLElement, ctx: ProfileCtx) {
       const accChanged = ns.accurate !== s.settings.accurate;
       s.saveSettings(ns);
       toast(accChanged ? t(ns.accurate ? 'accurateOn' : 'accurateOff') : t('goalsSaved'));
+    }
+    if (f.id === 'remForm') {
+      const wRaw = inp('#wGoal', root).value.trim(), wg = wRaw ? Math.round(parseFloat(wRaw)) : null;
+      if (wg != null && !(wg >= 500 && wg <= 8000)) { toast(t('obInvalid')); return; }
+      const from = +root.querySelector<HTMLSelectElement>('#rFrom')!.value, to = +root.querySelector<HTMLSelectElement>('#rTo')!.value;
+      let tz = s.settings.tz; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch { /* nesvarbu */ }
+      const ns: Settings = { ...s.settings, waterGoal: wg, remindWater: inp('#rWater', root).checked, remindMeals: inp('#rMeals', root).checked, remindFrom: from, remindTo: to, tz };
+      s.saveSettings(ns);
+      if ((ns.remindWater || ns.remindMeals) && !ctx.mock) void currentPush().then((p) => toast(p ? t('remindSaved') : t('pushNeeded')));
+      else toast(t('remindSaved'));
+      return;
     }
     if (f.id === 'prodForm') {
       if (s.products.length >= 100) { toast(t('productLimit')); return; }

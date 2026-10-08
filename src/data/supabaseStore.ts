@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { DEFAULT_SETTINGS } from '../lib/calc';
-import type { Day, FoodItem, Insight, MealKey, Product, SavedMeal, Settings, Workout } from '../types';
+import type { Day, FoodItem, Insight, MealKey, Product, PushSub, SavedMeal, Settings, Workout } from '../types';
 import { emptyDay, type InitialData, type Store } from './store';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -64,6 +64,11 @@ function rowToSettings(r: Row | null): Settings {
     activity: r.activity === 'low' || r.activity === 'mid' ? r.activity : 'light',
     pace: r.goal_pace == null ? DEFAULT_SETTINGS.pace : num(r.goal_pace),
     goalWeight: r.goal_weight_kg == null ? null : num(r.goal_weight_kg),
+    waterGoal: r.water_goal_ml == null ? null : num(r.water_goal_ml),
+    remindWater: !!r.remind_water, remindMeals: !!r.remind_meals,
+    remindFrom: r.remind_from == null ? DEFAULT_SETTINGS.remindFrom : num(r.remind_from),
+    remindTo: r.remind_to == null ? DEFAULT_SETTINGS.remindTo : num(r.remind_to),
+    tz: r.tz || DEFAULT_SETTINGS.tz,
   };
 }
 function rowToProduct(r: Row): Product {
@@ -77,7 +82,7 @@ export class SupabaseStore implements Store {
     const [profile, products, meals, insight, days, weights] = await Promise.all([
       this.db.from('profiles').select('*').eq('id', this.userId).maybeSingle(),
       this.db.from('products').select('*').order('created_at'),
-      this.db.from('saved_meals').select('id,name,created_at,saved_meal_items(position,name,amount,kcal,protein,carbs,fat)').order('created_at'),
+      this.db.from('saved_meals').select('id,name,servings,total_grams,created_at,saved_meal_items(position,name,amount,kcal,protein,carbs,fat)').order('created_at'),
       this.db.from('insights').select('text,period_days,created_at').order('created_at', { ascending: false }).limit(1).maybeSingle(),
       this.loadRange(from, '9999-12-31'),
       this.db.from('weight_log').select('day,weight_kg').order('day').limit(2000),
@@ -87,7 +92,7 @@ export class SupabaseStore implements Store {
       settings: rowToSettings(check(profile) as Row | null),
       products: (check(products) as Row[]).map(rowToProduct),
       meals: (check(meals) as Row[]).map((m) => ({
-        id: m.id, name: m.name,
+        id: m.id, name: m.name, servings: m.servings == null ? null : num(m.servings), totalGrams: m.total_grams == null ? null : num(m.total_grams),
         items: ((m.saved_meal_items || []) as Row[]).sort((a, b) => a.position - b.position)
           .map((i) => ({ name: i.name, amount: i.amount || '', kcal: num(i.kcal), protein: num(i.protein), carbs: num(i.carbs), fat: num(i.fat) })),
       })),
@@ -98,16 +103,18 @@ export class SupabaseStore implements Store {
   }
 
   async loadRange(from: string, to: string): Promise<Record<string, Day>> {
-    const [food, wk, steps] = await Promise.all([
+    const [food, wk, steps, water] = await Promise.all([
       this.db.from('food_entries').select('*').gte('day', from).lte('day', to).order('eaten_at').limit(5000),
       this.db.from('workouts').select('*').gte('day', from).lte('day', to).order('logged_at').limit(2000),
       this.db.from('daily_steps').select('day,steps').gte('day', from).lte('day', to),
+      this.db.from('daily_water').select('day,ml').gte('day', from).lte('day', to),
     ]);
     const days: Record<string, Day> = {};
     const get = (d: string) => (days[d] ||= emptyDay(d));
     for (const r of check(food) as Row[]) get(r.day).items.push(rowToFood(r));
     for (const r of check(wk) as Row[]) get(r.day).ex.push(rowToWorkout(r));
     for (const r of check(steps) as Row[]) get(r.day).steps = num(r.steps);
+    for (const r of check(water) as Row[]) get(r.day).water = num(r.ml);
     return days;
   }
 
@@ -137,11 +144,17 @@ export class SupabaseStore implements Store {
     else check(await this.db.from('daily_steps').delete().eq('day', date));
   }
 
+  async setWater(date: string, ml: number) {
+    if (ml > 0) check(await this.db.from('daily_water').upsert({ user_id: this.userId, day: date, ml: Math.round(ml) }, { onConflict: 'user_id,day' }));
+    else check(await this.db.from('daily_water').delete().eq('day', date));
+  }
+
   async saveSettings(s: Settings) {
     check(await this.db.from('profiles').update({
       kcal_goal: s.kcal, protein_goal: s.protein, weight_kg: s.weight, age: s.age, height_cm: s.height,
       sex: s.sex, add_burned: s.addBurned, accurate: s.accurate,
       onboarded: s.onboarded, lang: s.lang, activity: s.activity, goal_pace: s.pace, goal_weight_kg: s.goalWeight,
+      water_goal_ml: s.waterGoal, remind_water: s.remindWater, remind_meals: s.remindMeals, remind_from: s.remindFrom, remind_to: s.remindTo, tz: s.tz,
     }).eq('id', this.userId));
   }
 
@@ -155,7 +168,7 @@ export class SupabaseStore implements Store {
   }
 
   async addMeal(m: SavedMeal) {
-    check(await this.db.from('saved_meals').insert({ id: m.id, name: m.name }));
+    check(await this.db.from('saved_meals').insert({ id: m.id, name: m.name, servings: m.servings ?? null, total_grams: m.totalGrams ?? null }));
     const res = await this.db.from('saved_meal_items').insert(m.items.map((i, position) => ({
       meal_id: m.id, position, name: i.name, amount: i.amount, kcal: Math.round(i.kcal), protein: i.protein, carbs: i.carbs, fat: i.fat,
     })));
@@ -168,6 +181,11 @@ export class SupabaseStore implements Store {
   async setWeight(date: string, kg: number | null) {
     if (kg == null) check(await this.db.from('weight_log').delete().eq('day', date));
     else check(await this.db.from('weight_log').upsert({ user_id: this.userId, day: date, weight_kg: kg }, { onConflict: 'user_id,day' }));
+  }
+
+  async setPush(sub: PushSub | null, endpoint: string) {
+    if (sub) check(await this.db.from('push_subscriptions').upsert({ user_id: this.userId, endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth }, { onConflict: 'endpoint' }));
+    else check(await this.db.from('push_subscriptions').delete().eq('endpoint', endpoint));
   }
 
   async saveInsight(i: Insight) {

@@ -13,6 +13,8 @@ function get<T extends Intl.NumberFormat | Intl.DateTimeFormat>(key: string, mak
 export const nf = (x: number) => get('n0', (l) => new Intl.NumberFormat(l, { maximumFractionDigits: 0 })).format(x);
 /** Skaičius su vienu skaitmeniu po kablelio. */
 export const nf1 = (x: number) => get('n1', (l) => new Intl.NumberFormat(l, { maximumFractionDigits: 1 })).format(x);
+/** Litrai su iki 2 skaitmenų po kablelio (1,25). */
+export const fmtL = (ml: number) => get('n2', (l) => new Intl.NumberFormat(l, { maximumFractionDigits: 2 })).format(ml / 1000);
 export const fmtDate = (d: Date) => get('date', (l) => new Intl.DateTimeFormat(l, { weekday: 'long', month: 'long', day: 'numeric' })).format(d);
 export const fmtWeekday = (d: Date) => get('wd', (l) => new Intl.DateTimeFormat(l, { weekday: 'short' })).format(d).replace('.', '');
 export const fmtTime = (t: number) => get('time', (l) => new Intl.DateTimeFormat(l, { hour: '2-digit', minute: '2-digit' })).format(new Date(t));

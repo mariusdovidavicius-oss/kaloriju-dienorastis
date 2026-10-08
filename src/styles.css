@@ -1,7 +1,7 @@
 /* Kalorijų dienoraštis. Telefonas pirmiausia: vienas stulpelis, apatinė navigacija, išslystantys langai. */
 :root{
   --bg:#F3F5F2; --surface:#FFFFFF; --sunk:#E8ECE7; --fg:#18201C; --muted:#5B6862; --line:#D6DDD7;
-  --accent:#A3345E; --accent-ink:#FFFFFF; --protein:#23786A; --over:#C2541B; --ok:#2E7D4F;
+  --accent:#A3345E; --accent-ink:#FFFFFF; --protein:#23786A; --over:#C2541B; --ok:#2E7D4F; --water:#2B6CB0;
   --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body:"Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
   --tap:44px; --radius:16px; --nav-h:64px;
@@ -9,10 +9,10 @@
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --bg:#121614; --surface:#1B201D; --sunk:#252B27; --fg:#E8EEEA; --muted:#9BA8A1; --line:#323A35;
-  --accent:#E07AA2; --accent-ink:#1A0F14; --protein:#5CC2AF; --over:#F08A52; --ok:#6CC892; color-scheme:dark } }
+  --accent:#E07AA2; --accent-ink:#1A0F14; --protein:#5CC2AF; --over:#F08A52; --ok:#6CC892; --water:#6EA8E6; color-scheme:dark } }
 :root[data-theme="dark"]{
   --bg:#121614; --surface:#1B201D; --sunk:#252B27; --fg:#E8EEEA; --muted:#9BA8A1; --line:#323A35;
-  --accent:#E07AA2; --accent-ink:#1A0F14; --protein:#5CC2AF; --over:#F08A52; --ok:#6CC892; color-scheme:dark }
+  --accent:#E07AA2; --accent-ink:#1A0F14; --protein:#5CC2AF; --over:#F08A52; --ok:#6CC892; --water:#6EA8E6; color-scheme:dark }
 
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -263,3 +263,19 @@ input[type=date]{min-height:var(--tap)}
 .src{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--sunk);border-radius:6px;padding:2px 6px;white-space:nowrap}
 .scanbox video{width:100%;max-height:240px;object-fit:cover;border-radius:12px;background:#000}
 .syncbar{position:sticky;top:0;z-index:15;margin-top:10px;background:color-mix(in srgb,var(--over) 14%,var(--surface));color:var(--fg);border:1px solid color-mix(in srgb,var(--over) 35%,var(--line));border-radius:10px;padding:8px 12px;font-size:.84rem;font-weight:600}
+
+/* ---------- 3 etapas: vanduo, serija, kopijavimas, receptai ---------- */
+.waterbar{margin-top:10px} .waterbar i{background:var(--water)}
+.waterbtns{display:flex;gap:8px;margin-top:10px}
+.waterbtns .btn{flex:1;padding:0 8px;white-space:nowrap}
+.waterbtns .btn:first-child{flex:0 0 var(--tap);padding:0;font-size:1.3rem}
+.btn.water{color:var(--water);border-color:color-mix(in srgb,var(--water) 45%,var(--line));background:color-mix(in srgb,var(--water) 7%,var(--surface))}
+.streak{display:inline-flex;align-items:center;gap:4px;font-size:.8rem;font-weight:700;color:var(--over);background:color-mix(in srgb,var(--over) 11%,var(--surface));border-radius:999px;padding:4px 10px;white-space:nowrap;align-self:center}
+.mealacts{display:flex;gap:18px;flex-wrap:wrap}
+.copyday{display:block;margin:0 auto}
+.ingr .r-kcal{margin-left:8px}
+.fracs{display:flex;gap:6px;flex-wrap:wrap}
+.fracs .chipbtn{min-width:52px;justify-content:center}
+.calib .tiles{margin-top:10px}
+.switchrow{display:flex;gap:10px}
+.switchrow label{flex:1}

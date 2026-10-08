@@ -19,13 +19,14 @@ async function boot() {
   if (MOCK) {
     // Bandomasis režimas: niekas nesiunčiama į serverį. ?onboard=1 – parodo vedlį.
     const [{ MemoryStore }, { MockAi }] = await Promise.all([import('./data/memoryStore'), import('./ai/mockAi')]);
-    const onboarded = !new URLSearchParams(location.search).has('onboard');
-    const memory = new MemoryStore(true, onboarded), ai = new MockAi(), store = new OfflineStore(memory, 'mock');
+    const qs = new URLSearchParams(location.search), onboarded = !qs.has('onboard');
+    const memory = new MemoryStore(true, onboarded, qs.has('demo')), ai = new MockAi(), store = new OfflineStore(memory, 'mock');
     Object.assign(window, { __store: memory, __sync: store, __ai: ai }); // testams
     await startApp({ store, sync: store, ai, mock: true, anonymous: false, onLogout: () => location.reload(), onSaveAccount: () => {} });
     return;
   }
 
+  if (import.meta.env.PROD) void import('./lib/push').then((m) => m.registerServiceWorker());
   const [{ supabase }, { SupabaseStore }, { SupabaseAi }, { showAuth, NEEDS_PASSWORD }] = await Promise.all([
     import('./data/supabase'), import('./data/supabaseStore'), import('./ai/supabaseAi'), import('./ui/auth'),
   ]);
@@ -49,7 +50,7 @@ async function boot() {
         const store = new OfflineStore(new SupabaseStore(db, session.user.id), session.user.id);
         await startApp({
           store, sync: store, ai: new SupabaseAi(db), mock: false, anonymous,
-          onLogout: async () => { await db.auth.signOut(); try { localStorage.removeItem('kd-cache-' + session.user.id); } catch { /* nesvarbu */ } location.reload(); },
+          onLogout: async () => { try { const p = await import('./lib/push'); await p.disablePush(new SupabaseStore(db, session.user.id)); } catch { /* nesvarbu */ } await db.auth.signOut(); try { localStorage.removeItem('kd-cache-' + session.user.id); } catch { /* nesvarbu */ } location.reload(); },
           onSaveAccount: () => showAuth(db, 'upgrade', { onBack: () => { $('#authView').hidden = true; $('#appView').hidden = false; } }),
         });
       } catch (e) {

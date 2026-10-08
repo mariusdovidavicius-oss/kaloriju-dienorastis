@@ -130,6 +130,31 @@ export class AppState {
     if (!steps && before) toast(t('deleted', { what: t('steps') }), { label: t('undo'), run: () => this.setSteps(before) });
   }
 
+  /** Vanduo: pakeičia dienos kiekį (ml) per `delta`. */
+  addWater(delta: number, date = this.view) {
+    const cur = this.day(date).water || 0, ml = Math.max(0, Math.min(20000, cur + delta));
+    if (ml === cur) return;
+    this.setDay(date, { water: ml });
+    this.changed();
+    void this.save(() => this.store.setWater(date, ml));
+  }
+
+  /** Nukopijuoja įrašus į kitą dieną (`meal` – į kitą valgį, jei nurodyta). */
+  copyFood(items: FoodItem[], date: string, meal?: MealKey) {
+    if (!items.length || date > today()) return;
+    const now = Date.now();
+    this.addFood(items.map((it, i) => ({ ...it, id: crypto.randomUUID(), t: now + i, meal: meal ?? it.meal, maybe: null, units: null })), date);
+  }
+
+  /** Receptas ar dažnas valgis pakeičiamas nauju (tas pats id lieka). */
+  replaceMeal(m: SavedMeal) {
+    this.meals = this.meals.map((x) => (x.id === m.id ? m : x));
+    this.changed();
+    void this.save(async () => { await this.store.deleteMeal(m.id); await this.store.addMeal(m); });
+  }
+  recipes(): SavedMeal[] { return this.meals.filter((m) => m.servings != null); }
+  savedMeals(): SavedMeal[] { return this.meals.filter((m) => m.servings == null); }
+
   saveSettings(s: Settings) {
     this.settings = s;
     this.changed();
