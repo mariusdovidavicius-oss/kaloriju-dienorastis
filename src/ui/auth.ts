@@ -1,6 +1,8 @@
 // Prisijungimo langas: be registracijos (anoniminė paskyra), prisijungimas, registracija,
 // slaptažodžio atkūrimas ir anoniminės paskyros „išsaugojimas“ (el. pašto prisiejimas).
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { LANGS, lang, setLang, t, type Key, type Lang } from '../i18n';
+import { esc } from '../lib/format';
 import { $, inp } from './dom';
 
 /** Žymė, kad po el. pašto patvirtinimo reikia paprašyti nusistatyti slaptažodį. */
@@ -8,23 +10,23 @@ export const NEEDS_PASSWORD = 'kd-needs-password';
 
 export type AuthMode = 'login' | 'signup' | 'forgot' | 'reset' | 'upgrade';
 
-const TEXT: Record<AuthMode, { btn: string; switch: string; intro: string }> = {
-  login: { btn: 'Prisijungti', switch: 'Neturi paskyros? Registruokis', intro: 'Kalorijų ir baltymų dienoraštis lietuviškai.' },
-  signup: { btn: 'Sukurti paskyrą', switch: 'Jau turi paskyrą? Prisijunk', intro: 'Sukurk paskyrą. Slaptažodis – bent 8 simboliai.' },
-  forgot: { btn: 'Siųsti nuorodą', switch: 'Grįžti į prisijungimą', intro: 'Įvesk el. paštą – atsiųsime nuorodą naujam slaptažodžiui.' },
-  reset: { btn: 'Išsaugoti naują slaptažodį', switch: 'Grįžti į prisijungimą', intro: 'Įvesk naują slaptažodį.' },
-  upgrade: { btn: 'Išsaugoti paskyrą', switch: '', intro: 'Įvesk el. paštą. Atsiųsime patvirtinimo nuorodą, o paspaudęs ją nusistatysi slaptažodį. Visi įrašai liks.' },
+const TEXT: Record<AuthMode, { btn: Key; switch: Key | null; intro: Key }> = {
+  login: { btn: 'login', switch: 'toSignup', intro: 'authTagline' },
+  signup: { btn: 'signup', switch: 'toLogin', intro: 'signupIntro' },
+  forgot: { btn: 'sendLink', switch: 'backToLogin', intro: 'forgotIntro' },
+  reset: { btn: 'savePassword', switch: null, intro: 'resetIntro' },
+  upgrade: { btn: 'saveAccount', switch: null, intro: 'upgradeIntro' },
 };
 
 function authErr(msg: string): string {
   const m = msg.toLowerCase();
-  if (m.includes('invalid login')) return 'Neteisingas el. paštas arba slaptažodis.';
-  if (m.includes('email not confirmed')) return 'El. paštas dar nepatvirtintas. Paspausk nuorodą laiške.';
-  if (m.includes('already registered') || m.includes('already been registered')) return 'Toks el. paštas jau užregistruotas. Prisijunk.';
-  if (m.includes('anonymous sign-ins are disabled')) return 'Naudojimas be registracijos dar neįjungtas. Užsiregistruok el. paštu.';
-  if (m.includes('password')) return 'Slaptažodis per silpnas: bent 8 simboliai.';
-  if (m.includes('rate limit') || m.includes('too many')) return 'Per daug bandymų. Palauk kelias minutes.';
-  return 'Nepavyko: ' + msg;
+  if (m.includes('invalid login')) return t('authErrLogin');
+  if (m.includes('email not confirmed')) return t('authErrConfirm');
+  if (m.includes('already registered') || m.includes('already been registered')) return t('authErrExists');
+  if (m.includes('anonymous sign-ins are disabled')) return t('authErrAnonOff');
+  if (m.includes('password')) return t('authErrWeak');
+  if (m.includes('rate limit') || m.includes('too many')) return t('authErrRate');
+  return t('authErr', { msg });
 }
 
 export interface AuthOptions {
@@ -34,46 +36,48 @@ export interface AuthOptions {
 
 export function showAuth(db: SupabaseClient, initial: AuthMode = 'login', opts: AuthOptions = {}) {
   let mode: AuthMode = initial;
-  const msg = (t: string, kind: '' | 'err' | 'ok' = '') => { const el = $('#authMsg'); el.textContent = t; el.className = 'authmsg' + (kind ? ' ' + kind : ''); };
+  const root = $('#authView');
 
   function paint() {
-    const t = TEXT[mode];
-    $('#authBtn').textContent = t.btn;
-    $('#authSwitch').textContent = t.switch;
-    $('#authSwitch').hidden = !t.switch;
-    $('#authIntro').textContent = t.intro;
-    const noPass = mode === 'forgot' || mode === 'upgrade';
-    $('#authPassLbl').hidden = noPass;
-    inp('#authPass').required = !noPass;
-    inp('#authPass').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
-    $('#authEmail').parentElement!.hidden = mode === 'reset';
-    inp('#authEmail').required = mode !== 'reset';
-    $('#authForgot').hidden = mode !== 'login';
-    // „Pradėti be registracijos“ rodoma tik pradiniame lange
-    const anon = mode === 'login' || mode === 'signup';
-    $('#anonCard').hidden = !anon;
-    $('#orLogin').hidden = !anon;
-    $('#authBack').hidden = !opts.onBack;
-    msg('');
+    const tx = TEXT[mode];
+    const anon = mode === 'login' || mode === 'signup', noPass = mode === 'forgot' || mode === 'upgrade', noEmail = mode === 'reset';
+    root.innerHTML = '<div class="auth-top"><h1>' + esc(t('appName')) + '</h1>'
+      + '<div class="seg small" role="group" aria-label="' + esc(t('language')) + '">' + LANGS.map((l) => '<button type="button" data-lang="' + l.code + '" aria-pressed="' + (lang() === l.code) + '">' + l.code.toUpperCase() + '</button>').join('') + '</div></div>'
+      + '<p class="lead">' + esc(t(tx.intro)) + '</p>'
+      + (anon ? '<div class="card authcard"><button class="btn main big" type="button" id="anonBtn">' + esc(t('authAnon')) + '</button><p class="hint center">' + esc(t('authAnonHint')) + '</p><div class="status" id="anonMsg" role="status"></div></div><p class="lead">' + esc(t('authOr')) + '</p>' : '')
+      + '<form class="card authcard" id="authForm" autocomplete="on">'
+      + (noEmail ? '' : '<label>' + esc(t('email')) + '<input type="email" id="authEmail" autocomplete="email" required></label>')
+      + (noPass ? '' : '<label>' + esc(t('password')) + '<input type="password" id="authPass" minlength="8" required autocomplete="' + (mode === 'login' ? 'current-password' : 'new-password') + '"></label>')
+      + '<button class="btn main big" type="submit" id="authBtn">' + esc(t(tx.btn)) + '</button>'
+      + '<div class="status" id="authMsg" role="status"></div>'
+      + (tx.switch ? '<button type="button" class="linkbtn" id="authSwitch">' + esc(t(tx.switch)) + '</button>' : '')
+      + (mode === 'login' ? '<button type="button" class="linkbtn" id="authForgot">' + esc(t('forgot')) + '</button>' : '')
+      + (opts.onBack ? '<button type="button" class="linkbtn" id="authBack">' + esc(t('backToApp')) + '</button>' : '')
+      + '</form>';
   }
+  const msg = (text: string, kind: '' | 'err' | 'ok' = '') => { const el = $('#authMsg'); el.textContent = text; el.className = 'status' + (kind ? ' ' + kind : ''); };
 
-  $('#authSwitch').onclick = () => { mode = mode === 'login' ? 'signup' : 'login'; paint(); };
-  $('#authForgot').onclick = () => { mode = 'forgot'; paint(); };
-  $('#authBack').onclick = () => opts.onBack?.();
-
-  $('#anonBtn').onclick = async () => {
-    const btn = $<HTMLButtonElement>('#anonBtn'), m = $('#anonMsg');
-    btn.disabled = true; m.textContent = 'Palauk…'; m.className = 'authmsg';
-    const { error } = await db.auth.signInAnonymously();
-    btn.disabled = false;
-    if (error) { m.textContent = authErr(error.message); m.className = 'authmsg err'; } else m.textContent = '';
+  root.onclick = async (e) => {
+    const el = e.target as HTMLElement;
+    const lb = el.closest<HTMLElement>('[data-lang]'); if (lb) { setLang(lb.dataset.lang as Lang); paint(); return; }
+    if (el.id === 'authSwitch') { mode = mode === 'login' ? 'signup' : 'login'; paint(); return; }
+    if (el.id === 'authForgot') { mode = 'forgot'; paint(); return; }
+    if (el.id === 'authBack') { opts.onBack?.(); return; }
+    if (el.id === 'anonBtn') {
+      const btn = el as HTMLButtonElement, m = $('#anonMsg');
+      btn.disabled = true; m.textContent = t('wait'); m.className = 'status';
+      const { error } = await db.auth.signInAnonymously();
+      btn.disabled = false;
+      if (error) { m.textContent = authErr(error.message); m.className = 'status err'; } else m.textContent = '';
+    }
   };
 
-  $<HTMLFormElement>('#authForm').onsubmit = async (e) => {
+  root.onsubmit = async (e) => {
     e.preventDefault();
-    const email = inp('#authEmail').value.trim(), password = inp('#authPass').value;
+    const email = root.querySelector<HTMLInputElement>('#authEmail')?.value.trim() || '';
+    const password = root.querySelector<HTMLInputElement>('#authPass')?.value || '';
     const btn = $<HTMLButtonElement>('#authBtn');
-    btn.disabled = true; msg('Palauk…');
+    btn.disabled = true; msg(t('wait'));
     try {
       if (mode === 'login') {
         const { error } = await db.auth.signInWithPassword({ email, password });
@@ -82,23 +86,23 @@ export function showAuth(db: SupabaseClient, initial: AuthMode = 'login', opts: 
       } else if (mode === 'signup') {
         const { data, error } = await db.auth.signUp({ email, password, options: { emailRedirectTo: location.origin } });
         if (error) throw error;
-        if (!data.session) msg('Paskyra sukurta. Patikrink el. paštą ir paspausk patvirtinimo nuorodą.', 'ok');
+        if (!data.session) msg(t('authSignupSent'), 'ok');
       } else if (mode === 'forgot') {
         const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.origin });
         if (error) throw error;
-        msg('Jei toks el. paštas registruotas, nuoroda išsiųsta.', 'ok');
+        msg(t('authResetSent'), 'ok');
       } else if (mode === 'upgrade') {
         // Anoniminei paskyrai prisiejamas el. paštas – vartotojo id ir duomenys nesikeičia.
         // Supabase reikalauja pirma patvirtinti el. paštą, tik tada galima nustatyti slaptažodį.
         const { error } = await db.auth.updateUser({ email }, { emailRedirectTo: location.origin });
         if (error) throw error;
         try { localStorage.setItem(NEEDS_PASSWORD, '1'); } catch { /* nesvarbu */ }
-        msg('Patikrink el. paštą ir paspausk patvirtinimo nuorodą – tada nusistatysi slaptažodį. Iki tol gali naudotis programa kaip anksčiau.', 'ok');
+        msg(t('authUpgradeSent'), 'ok');
       } else {
         const { error } = await db.auth.updateUser({ password });
         if (error) throw error;
         try { localStorage.removeItem(NEEDS_PASSWORD); } catch { /* nesvarbu */ }
-        msg('Slaptažodis išsaugotas.', 'ok');
+        msg(t('authPasswordSaved'), 'ok');
         location.reload();
       }
     } catch (err) {
@@ -111,5 +115,7 @@ export function showAuth(db: SupabaseClient, initial: AuthMode = 'login', opts: 
   paint();
   $('#bootView').hidden = true;
   $('#appView').hidden = true;
-  $('#authView').hidden = false;
+  $('#onboardView').hidden = true;
+  root.hidden = false;
+  if (mode !== 'login' && mode !== 'signup') inp('#authEmail, #authPass', root).focus?.();
 }

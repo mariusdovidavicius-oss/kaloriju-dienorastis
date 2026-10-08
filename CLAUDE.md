@@ -7,3 +7,5 @@
 - Prieš įkeliant: `npm test`, `npm run test:e2e`, `npm run build`. Naršyklės testai veikia bandomajame režime (`--mode mock`), kad nebūtų paliesti tikri duomenys.
 - Claude nurodymai (prompts) yra `supabase/functions/ai/prompts.ts`; pakeitus – iš naujo įdiegti funkciją `ai`.
 - Asmeninių duomenų (mitybos įrašų) į repozitoriją nekelti.
+- Programa dvikalbė (lietuvių ir anglų): naujus tekstus rašyti tik per `t('raktas')`, pridėti į abu `src/i18n/lt.ts` ir `src/i18n/en.ts`.
+- Mygtukai ≥ 44 px (testas tikrina ≥ 36 px 320 px ekrane); tikrinti iPhone SE (320 × 568) dydžiu.

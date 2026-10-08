@@ -27,7 +27,7 @@ const U = q(userId);
 // nustatymai
 if (existsSync(join(dir, 'settings.json'))) {
   const s = read('settings.json');
-  out.push(`update public.profiles set kcal_goal=${num(s.kcal) || 2000}, protein_goal=${num(s.protein) || 160}, weight_kg=${num(s.weight) || 80}, age=${num(s.age) || 35}, height_cm=${num(s.height) || 175}, sex=${q(s.sex === 'f' ? 'f' : 'm')}, add_burned=${!!s.addBurned}, accurate=${!!s.accurate} where id=${U};`);
+  out.push(`update public.profiles set kcal_goal=${num(s.kcal) || 2000}, protein_goal=${num(s.protein) || 160}, weight_kg=${num(s.weight) || 80}, age=${num(s.age) || 35}, height_cm=${num(s.height) || 175}, sex=${q(s.sex === 'f' ? 'f' : 'm')}, add_burned=${!!s.addBurned}, accurate=${!!s.accurate}, onboarded=true where id=${U};`);
 }
 
 // produktai (seni id → nauji uuid)

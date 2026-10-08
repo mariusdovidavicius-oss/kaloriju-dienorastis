@@ -1,17 +1,27 @@
 import './styles.css';
+import { t } from './i18n';
 import { $ } from './ui/dom';
 import { startApp } from './ui/app';
 
 const MOCK = import.meta.env.VITE_MOCK === '1';
 
+function showBoot(text = t('loading')) {
+  $('#bootView').textContent = text;
+  $('#bootView').hidden = false;
+  $('#authView').hidden = true;
+  $('#appView').hidden = true;
+  $('#onboardView').hidden = true;
+}
+
 async function boot() {
+  showBoot();
   if (MOCK) {
-    // Bandomasis režimas: niekas nesiunčiama į serverį.
+    // Bandomasis režimas: niekas nesiunčiama į serverį. ?onboard=1 – parodo vedlį.
     const [{ MemoryStore }, { MockAi }] = await Promise.all([import('./data/memoryStore'), import('./ai/mockAi')]);
-    const store = new MemoryStore(), ai = new MockAi();
+    const onboarded = !new URLSearchParams(location.search).has('onboard');
+    const store = new MemoryStore(true, onboarded), ai = new MockAi();
     Object.assign(window, { __store: store, __ai: ai }); // testams
     await startApp({ store, ai, mock: true, anonymous: false, onLogout: () => location.reload(), onSaveAccount: () => {} });
-    show('app');
     return;
   }
 
@@ -33,28 +43,19 @@ async function boot() {
     if (needsPassword) { showAuth(db, 'reset'); return; }
     // startApp kviečiamas už įvykio ribų (supabase-js rekomendacija – nelaukti onAuthStateChange viduje).
     setTimeout(async () => {
-      show('boot');
+      showBoot();
       try {
         await startApp({
           store: new SupabaseStore(db, session.user.id), ai: new SupabaseAi(db), mock: false, anonymous,
           onLogout: async () => { await db.auth.signOut(); location.reload(); },
-          onSaveAccount: () => showAuth(db, 'upgrade', { onBack: () => show('app') }),
+          onSaveAccount: () => showAuth(db, 'upgrade', { onBack: () => { $('#authView').hidden = true; $('#appView').hidden = false; } }),
         });
-        show('app');
       } catch (e) {
         console.error(e);
-        $('#bootView').textContent = 'Nepavyko įkelti duomenų. Patikrink ryšį ir perkrauk puslapį.';
-        show('boot');
+        showBoot(t('loadFailed'));
       }
     }, 0);
   });
 }
 
-function show(which: 'boot' | 'app') {
-  $('#bootView').hidden = which !== 'boot';
-  $('#authView').hidden = true;
-  $('#appView').hidden = which !== 'app';
-}
-
 void boot();
-

@@ -60,6 +60,9 @@ function rowToSettings(r: Row | null): Settings {
     weight: num(r.weight_kg) || DEFAULT_SETTINGS.weight, age: num(r.age) || DEFAULT_SETTINGS.age,
     height: num(r.height_cm) || DEFAULT_SETTINGS.height, sex: r.sex === 'f' ? 'f' : 'm',
     addBurned: !!r.add_burned, accurate: !!r.accurate,
+    onboarded: !!r.onboarded, lang: r.lang === 'en' ? 'en' : 'lt',
+    activity: r.activity === 'low' || r.activity === 'mid' ? r.activity : 'light',
+    pace: r.goal_pace == null ? DEFAULT_SETTINGS.pace : num(r.goal_pace),
   };
 }
 function rowToProduct(r: Row): Product {
@@ -135,6 +138,7 @@ export class SupabaseStore implements Store {
     check(await this.db.from('profiles').update({
       kcal_goal: s.kcal, protein_goal: s.protein, weight_kg: s.weight, age: s.age, height_cm: s.height,
       sex: s.sex, add_burned: s.addBurned, accurate: s.accurate,
+      onboarded: s.onboarded, lang: s.lang, activity: s.activity, goal_pace: s.pace,
     }).eq('id', this.userId));
   }
 

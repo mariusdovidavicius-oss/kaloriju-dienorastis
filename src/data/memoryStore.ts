@@ -5,7 +5,7 @@ import { emptyDay, type InitialData, type Store } from './store';
 
 /** Bandomoji saugykla atmintyje (režimas `npm run dev:mock` ir testai). Po puslapio perkrovimo viskas dingsta. */
 export class MemoryStore implements Store {
-  settings: Settings = { ...DEFAULT_SETTINGS };
+  settings: Settings = { ...DEFAULT_SETTINGS, weight: 94, height: 183, age: 36, kcal: 2000, protein: 160, onboarded: true };
   products: Product[] = [
     { id: 'p-duona', name: 'Vilniaus ruginė duona (pilno grūdo)', unit: 'riekė', grams: 33, kcal: 78, protein: 2.7, carbs: 14.5, fat: 0.3 },
     { id: 'p-majonezas', name: "Hellmann's Light majonezas", unit: 'šaukštas', grams: 15, kcal: 43, protein: 0.1, carbs: 1.4, fat: 4.1 },
@@ -16,7 +16,8 @@ export class MemoryStore implements Store {
   /** Testams: kiek kartų kviesta kiekviena operacija. */
   calls: string[] = [];
 
-  constructor(seed = true) {
+  constructor(seed = true, onboarded = true) {
+    this.settings.onboarded = onboarded;
     if (seed) {
       const y = addDays(today(), -1);
       const t = Date.now() - 86400000;

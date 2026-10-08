@@ -1,7 +1,9 @@
-import type { Day, FoodItem, LookupResult, MealItem, MealKey, Product, Settings } from '../types';
+import { t, type Key } from '../i18n';
+import type { Activity, Day, FoodItem, LookupResult, MealItem, MealKey, Product, Settings } from '../types';
 
 export const DEFAULT_SETTINGS: Settings = {
-  kcal: 2000, protein: 160, weight: 94, age: 36, height: 183, sex: 'm', addBurned: false, accurate: false,
+  kcal: 2000, protein: 140, weight: 80, age: 35, height: 175, sex: 'm', addBurned: false, accurate: false,
+  onboarded: false, lang: 'lt', activity: 'light', pace: 0.5,
 };
 
 export const WORKOUT_MET = 4.5;
@@ -46,8 +48,8 @@ export function dayLimit(s: Settings, burned: number): number {
 }
 
 /* ---------- valgiai ---------- */
-export const MEALS: [MealKey, string][] = [
-  ['pusryciai', 'Pusryčiai'], ['pietus', 'Pietūs'], ['vakariene', 'Vakarienė'], ['uzkandis', 'Užkandžiai'],
+export const MEALS: [MealKey, Key][] = [
+  ['pusryciai', 'mealBreakfast'], ['pietus', 'mealLunch'], ['vakariene', 'mealDinner'], ['uzkandis', 'mealSnack'],
 ];
 export function slotByHour(h: number): MealKey {
   return h < 11 ? 'pusryciai' : h < 16 ? 'pietus' : h < 21 ? 'vakariene' : 'uzkandis';
@@ -57,7 +59,8 @@ export function mealOf(it: Pick<FoodItem, 'meal' | 't'>): MealKey {
   return slotByHour(it.t ? new Date(it.t).getHours() : 12);
 }
 export function mealLabel(k: MealKey): string {
-  return MEALS.find((m) => m[0] === k)?.[1] ?? '';
+  const m = MEALS.find((x) => x[0] === k);
+  return m ? t(m[1]) : '';
 }
 export function mealKcal(items: Pick<MealItem, 'kcal'>[]): number {
   return items.reduce((a, i) => a + (+i.kcal || 0), 0);
@@ -82,13 +85,29 @@ export function isGramUnit(p: Product): boolean {
 export function pPer100kcal(r: Pick<LookupResult, 'per100'>): number {
   return r.per100.kcal > 0 ? r.per100.protein / r.per100.kcal * 100 : 0;
 }
-export function verdict(r: Pick<LookupResult, 'per100'>): ['ok' | 'over' | 'neutral', string] {
+export function verdict(r: Pick<LookupResult, 'per100'>): ['ok' | 'over' | 'neutral', Key] {
   const p = r.per100, d = pPer100kcal(r);
-  if (p.kcal > 0 && d >= 10) return ['ok', 'Daug baltymų'];
-  if (p.sugar >= 20) return ['over', 'Daug cukraus'];
-  if (p.kcal >= 400) return ['over', 'Labai kaloringas'];
-  if (p.kcal <= 60) return ['ok', 'Mažai kalorijų'];
-  return ['neutral', 'Vidutinis'];
+  if (p.kcal > 0 && d >= 10) return ['ok', 'vHighProtein'];
+  if (p.sugar >= 20) return ['over', 'vHighSugar'];
+  if (p.kcal >= 400) return ['over', 'vHighKcal'];
+  if (p.kcal <= 60) return ['ok', 'vLowKcal'];
+  return ['neutral', 'vNeutral'];
+}
+
+/* ---------- tikslo skaičiavimas (vedlys ir Profilis) ---------- */
+/** Kasdienio judėjimo koeficientai (be treniruočių – jos skaičiuojamos atskirai). */
+export const ACTIVITY: Record<Activity, number> = { low: 1.2, light: 1.35, mid: 1.5 };
+export const MIN_KCAL: Record<'m' | 'f', number> = { m: 1500, f: 1200 };
+
+/**
+ * Pasiūlytas dienos tikslas: BMR × judėjimas − tempas × 7700 / 7.
+ * Baltymai – 1,6 g/kg, suapvalinta iki 5 g.
+ */
+export function suggestGoal(s: Pick<Settings, 'weight' | 'height' | 'age' | 'sex' | 'activity' | 'pace'>) {
+  const tdee = bmr({ ...DEFAULT_SETTINGS, ...s }) * ACTIVITY[s.activity];
+  const raw = Math.round((tdee - s.pace * KCAL_PER_KG_FAT / 7) / 50) * 50;
+  const min = MIN_KCAL[s.sex];
+  return { kcal: Math.max(min, raw), protein: Math.round(1.6 * s.weight / 5) * 5, clamped: raw < min, min };
 }
 
 /* ---------- statistika ---------- */

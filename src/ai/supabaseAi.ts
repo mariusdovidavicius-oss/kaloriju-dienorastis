@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { lang } from '../i18n';
 import type { AlternativesResult, EstimatedItem, ImageInput, LookupResult } from '../types';
 import { AiError, type AiClient } from './client';
 
@@ -7,7 +8,7 @@ export class SupabaseAi implements AiClient {
   constructor(private db: SupabaseClient) {}
 
   private async call<T>(body: Record<string, unknown>): Promise<T> {
-    const { data, error } = await this.db.functions.invoke('ai', { body });
+    const { data, error } = await this.db.functions.invoke('ai', { body: { ...body, lang: lang() } });
     if (error) {
       // FunctionsHttpError turi atsakymą su { error: kodas }
       let code = 'network';

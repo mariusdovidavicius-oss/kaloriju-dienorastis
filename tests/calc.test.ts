@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { baseline, bmr, dayStat, gramsPer, isMealPlan, mealOf, slotByHour, stepsKcal, totals, verdict, workoutKcal, DEFAULT_SETTINGS } from '../src/lib/calc';
+import { baseline, bmr, dayStat, gramsPer, isMealPlan, mealOf, slotByHour, stepsKcal, suggestGoal, totals, verdict, workoutKcal, DEFAULT_SETTINGS } from '../src/lib/calc';
 import { addDays, periodDays } from '../src/lib/dates';
-import { countWord } from '../src/lib/format';
+import { countEntries, setLang, t } from '../src/i18n';
+import { en } from '../src/i18n/en';
+import { lt } from '../src/i18n/lt';
 import type { Day } from '../src/types';
 
-const S = { ...DEFAULT_SETTINGS }; // 94 kg, 183 cm, 36 m., vyras
+const S = { ...DEFAULT_SETTINGS, weight: 94, height: 183, age: 36, sex: 'm' as const };
 
 describe('formulės (sutampa su projekto aprašu)', () => {
   it('BMR ~1910 ir natūralus deginimas ~2100', () => {
@@ -61,8 +63,8 @@ describe('skaičiuoklė', () => {
     expect(isMealPlan('graikiškas jogurtas')).toBe(false);
   });
   it('verdiktas', () => {
-    expect(verdict({ per100: { kcal: 73, protein: 9, carbs: 4, sugar: 4, fat: 2 } })[1]).toBe('Daug baltymų');
-    expect(verdict({ per100: { kcal: 500, protein: 5, carbs: 60, sugar: 40, fat: 25 } })[1]).toBe('Daug cukraus');
+    expect(verdict({ per100: { kcal: 73, protein: 9, carbs: 4, sugar: 4, fat: 2 } })[1]).toBe('vHighProtein');
+    expect(verdict({ per100: { kcal: 500, protein: 5, carbs: 60, sugar: 40, fat: 25 } })[1]).toBe('vHighSugar');
   });
   it('vieneto svoris iš „100 g“', () => {
     expect(gramsPer({ id: '', name: '', unit: '100 g', grams: 0, kcal: 0, protein: 0, carbs: 0, fat: 0 })).toBe(100);
@@ -70,13 +72,45 @@ describe('skaičiuoklė', () => {
   });
 });
 
+describe('tikslo pasiūlymas', () => {
+  it('Marius: sėdimas darbas, −0,5 kg/sav. ≈ 1 750 kcal, 150 g baltymų', () => {
+    const r = suggestGoal({ ...S, activity: 'low', pace: 0.5 });
+    expect(r.kcal).toBe(1750);
+    expect(r.protein).toBe(150);
+  });
+  it('neleidžia nukristi žemiau minimumo', () => {
+    const r = suggestGoal({ weight: 50, height: 155, age: 60, sex: 'f', activity: 'low', pace: 0.75 });
+    expect(r.kcal).toBe(1200);
+    expect(r.clamped).toBe(true);
+  });
+  it('išlaikymas = BMR × judėjimas', () => {
+    expect(suggestGoal({ ...S, activity: 'mid', pace: 0 }).kcal).toBe(Math.round(1909 * 1.5 / 50) * 50);
+  });
+});
+
 describe('datos ir tekstai', () => {
   it('addDays per mėnesio ribą', () => expect(addDays('2026-10-01', -1)).toBe('2026-09-30'));
   it('periodDays', () => expect(periodDays(3, '2026-10-07')).toEqual(['2026-10-05', '2026-10-06', '2026-10-07']));
   it('lietuviškos galūnės', () => {
-    expect(countWord(1)).toBe('1 įrašas');
-    expect(countWord(3)).toBe('3 įrašai');
-    expect(countWord(11)).toBe('11 įrašų');
-    expect(countWord(21)).toBe('21 įrašas');
+    setLang('lt');
+    expect(countEntries(1)).toBe('1 įrašas');
+    expect(countEntries(3)).toBe('3 įrašai');
+    expect(countEntries(11)).toBe('11 įrašų');
+    expect(countEntries(21)).toBe('21 įrašas');
+  });
+  it('angliški tekstai', () => {
+    setLang('en');
+    expect(countEntries(1)).toBe('1 entry');
+    expect(countEntries(5)).toBe('5 entries');
+    expect(t('kcalOf', { n: '2,000' })).toBe('of 2,000 kcal');
+    setLang('lt');
+  });
+  it('abiejose kalbose tie patys raktai, be tuščių tekstų', () => {
+    expect(Object.keys(en).sort()).toEqual(Object.keys(lt).sort());
+    for (const v of [...Object.values(en), ...Object.values(lt)]) expect(v.trim().length).toBeGreaterThan(0);
+  });
+  it('{kintamieji} sutampa abiejose kalbose', () => {
+    const vars = (s: string) => (s.match(/\{\w+\}/g) || []).sort().join(',');
+    for (const k of Object.keys(lt) as (keyof typeof lt)[]) expect(vars(en[k]), k).toBe(vars(lt[k]));
   });
 });

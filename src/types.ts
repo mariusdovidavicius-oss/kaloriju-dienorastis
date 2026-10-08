@@ -1,5 +1,6 @@
 export type MealKey = 'pusryciai' | 'pietus' | 'vakariene' | 'uzkandis';
 export type Sex = 'm' | 'f';
+export type Activity = 'low' | 'light' | 'mid';
 
 export interface Settings {
   kcal: number;
@@ -10,6 +11,12 @@ export interface Settings {
   sex: Sex;
   addBurned: boolean;
   accurate: boolean;
+  /** Ar pirmo paleidimo vedlys jau užbaigtas. */
+  onboarded: boolean;
+  lang: 'lt' | 'en';
+  activity: Activity;
+  /** Norimas tempas, kg per savaitę (0 – išlaikyti). */
+  pace: number;
 }
 
 export type EntrySource = 'ai' | 'manual' | 'product' | 'meal' | 'calc' | 'import';

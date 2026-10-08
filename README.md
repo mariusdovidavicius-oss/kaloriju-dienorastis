@@ -18,8 +18,17 @@ Naršyklėje naudojamas tik viešas „publishable“ raktas; duomenis saugo RLS
 
 ```
 src/
-  main.ts              paleidimas: prisijungimas → programa (arba bandomasis režimas)
-  ui/app.ts            pagrindinis langas (suvestinė, įvedimas, dienoraštis, statistika)
+  main.ts              paleidimas: prisijungimas → (vedlys) → programa, arba bandomasis režimas
+  i18n/                kalbos: lt.ts, en.ts (tie patys raktai), t() ir countEntries()
+  ui/app.ts            karkasas: apatinė navigacija, ekranų perjungimas
+  ui/state.ts          būsena ir veiksmai (įrašymas, taisymas, trynimas su „Atšaukti“)
+  ui/sheet.ts          iš apačios išslystantis langas
+  ui/views/today.ts    Šiandien: savaitės juosta, žiedas, valgių kortelės
+  ui/views/add.ts      Pridėti: maistas, sportas, skaičiuoklė
+  ui/views/edit.ts     įrašo, treniruotės, žingsnių taisymas
+  ui/views/stats.ts    Statistika ir Claude pastebėjimai
+  ui/views/profile.ts  Profilis: tikslai, kalba, Mano produktai, paskyra
+  ui/views/onboarding.ts  pirmo paleidimo vedlys
   ui/auth.ts           prisijungimas, registracija, slaptažodžio atkūrimas
   lib/calc.ts          formulės: BMR, natūralus deginimas, sportas, žingsniai, statistika
   data/store.ts        duomenų sluoksnio sąsaja
@@ -40,7 +49,7 @@ scripts/import-artifact.mjs   senų Artifact duomenų perkėlimas
 ```bash
 npm install
 npm run dev        # programa su tikra Supabase duomenų baze
-npm run dev:mock   # bandomasis režimas: duomenys atmintyje, AI netikras
+npm run dev:mock   # bandomasis režimas: duomenys atmintyje, AI netikras (?onboard=1 – vedlys)
 npm test           # formulių testai
 npm run test:e2e   # naršyklės testai (bandomasis režimas, tikri duomenys neliečiami)
 npm run build      # tipų patikra + gamybinė versija į dist/
@@ -50,6 +59,15 @@ npm run build      # tipų patikra + gamybinė versija į dist/
 
 Paspaudus „Pradėti be registracijos“ sukuriama anoniminė Supabase paskyra (reikia įjungti Supabase → Authentication → Sign In / Providers → „Allow anonymous sign-ins“).
 Duomenys saugomi duomenų bazėje kaip ir visiems, bet prisijungimas laikomas tik tame įrenginyje. Mygtukas „Išsaugoti paskyrą“ prie jos prisieja el. paštą – vartotojo id ir visi įrašai lieka; patvirtinus el. paštą paprašoma nusistatyti slaptažodį.
+
+## Kalbos
+
+Visi tekstai yra `src/i18n/lt.ts` ir `src/i18n/en.ts`; testas tikrina, kad abiejose kalbose sutaptų raktai ir `{kintamieji}`.
+Kalba išsaugoma profilyje (`profiles.lang`). AI nurodymai lietuviški, bet anglų kalbos vartotojui serverio funkcija liepia atsakyti angliškai.
+
+## Dienos tikslo pasiūlymas
+
+`BMR × judėjimas − tempas × 7700 / 7`, kur judėjimas: daugiausia sėdi 1,2, šiek tiek vaikšto 1,35, daug juda 1,5; tempas 0–0,75 kg per savaitę. Minimumas: 1 500 kcal vyrams, 1 200 kcal moterims. Baltymai: 1,6 g/kg.
 
 ## Formulės
 

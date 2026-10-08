@@ -146,6 +146,8 @@ Deno.serve(async (req) => {
   const prof = profile as Profile | null;
   const prods = (products ?? []) as Product[];
   const text = str(body.text, 1000);
+  // Nurodymai lietuviški; anglų kalbos vartotojui – atsakymas angliškai.
+  const L = body.lang === 'en' ? '\n\nIMPORTANT: write every name, amount, tip and any other text in English.' : '';
   const tierModel = (image || prof?.accurate) ? MODEL_DEFAULT : MODEL_QUICK;
 
   let model = tierModel;
@@ -156,7 +158,7 @@ Deno.serve(async (req) => {
     let result: unknown;
     if (task === 'estimate') {
       if (!text && !image) return fail('bad_request');
-      const out = await claude(model, estimatePrompt(text, !!image, prods), image, 1500);
+      const out = await claude(model, estimatePrompt(text, !!image, prods) + L, image, 1500);
       usage = out.usage;
       const items = cleanItems(parseJson(out.text), new Set(prods.map((p) => p.id)));
       if (!items.length) throw Object.assign(new Error('nofood'), { code: 'nofood' });
@@ -164,13 +166,13 @@ Deno.serve(async (req) => {
     } else if (task === 'lookup') {
       if (!text && !image) return fail('bad_request');
       const g = Math.round(n(body.grams));
-      const out = await claude(model, lookupPrompt(text, !!image, prods), image, 800);
+      const out = await claude(model, lookupPrompt(text, !!image, prods) + L, image, 800);
       usage = out.usage;
       result = cleanLookup(parseJson(out.text), g > 0 && g <= 5000 ? g : 0);
     } else if (task === 'alternatives') {
       if (!text) return fail('bad_request');
       model = MODEL_DEFAULT;
-      const out = await claude(model, alternativesPrompt(text), null, 1500);
+      const out = await claude(model, alternativesPrompt(text) + L, null, 1500);
       usage = out.usage;
       result = cleanAlternatives(parseJson(out.text));
     } else {
@@ -179,7 +181,7 @@ Deno.serve(async (req) => {
       const days = Math.min(90, Math.max(1, Math.round(n(body.n)) || 7));
       if (!lines) return fail('bad_request');
       model = MODEL_DEFAULT;
-      const out = await claude(model, insightPrompt(prof, days, lines), null, 700);
+      const out = await claude(model, insightPrompt(prof, days, lines) + L, null, 700);
       usage = out.usage;
       result = { text: out.text.trim() };
     }
